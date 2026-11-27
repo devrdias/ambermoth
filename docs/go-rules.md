@@ -81,7 +81,8 @@ examples/              # runnable examples
 - Errors a caller acts on are sentinels or typed errors in the package that returns them
   (`ledger.ErrNilClock`).
 - Command errors reach the user once, from `cli.App.Run` (`error: …`, exit 1). Verification
-  failures print their report and exit 1; bad command lines exit 2.
+  failures print their report and exit 1; bad command lines exit 2. A stdout write that fails
+  (`cli.App` latches the first error) makes the command exit 1 even if it would have exited 0.
 - `*slog.Logger` is injected through constructors; no `slog.Default()` or `log.*` outside `main`
   **[checked]**. Use the `…Context` variants and `snake_case` keys (`seq`, `provider`,
   `duration_ms`). Log a failure once, where it is handled.

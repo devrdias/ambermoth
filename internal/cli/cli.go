@@ -71,7 +71,9 @@ type Env struct {
 
 // App runs ambermoth commands.
 type App struct {
-	env      Env
+	env Env
+	// out is stdout. Its first write error decides the exit code.
+	out      *outWriter
 	commands map[string]command
 }
 
@@ -85,7 +87,7 @@ func (e exitError) Error() string { return fmt.Sprintf("exit %d", int(e)) }
 
 // New returns an App that uses env.
 func New(env Env) *App {
-	a := &App{env: env}
+	a := &App{env: env, out: &outWriter{w: env.Stdout}}
 	a.commands = map[string]command{
 		"init": a.cmdInit, "proxy": a.cmdProxy, "key": a.cmdKey, "link": a.cmdLink,
 		"amend": a.cmdAmend, "anchor": a.cmdAnchor, "verify": a.cmdVerify, "pack": a.cmdPack,
@@ -104,21 +106,40 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	name, rest := args[0], args[1:]
 	switch name {
 	case "version", "--version", "-v":
-		_, _ = fmt.Fprintln(a.env.Stdout, "ambermoth", a.env.Version)
-		return ExitOK
+		_, _ = fmt.Fprintln(a.out, "ambermoth", a.env.Version)
+		return a.exitCode(name, nil)
 	case "help", "-h", "--help":
-		_, _ = fmt.Fprint(a.env.Stdout, usage)
-		return ExitOK
+		_, _ = fmt.Fprint(a.out, usage)
+		return a.exitCode(name, nil)
 	}
 	cmd, ok := a.commands[name]
 	if !ok {
 		_, _ = fmt.Fprintf(a.env.Stderr, "unknown command %q\n\n%s", name, usage)
 		return ExitUsage
 	}
-	return a.exitCode(cmd(ctx, rest))
+	return a.exitCode(name, cmd(ctx, rest))
 }
 
-func (a *App) exitCode(err error) int {
+// exitCode turns what the command returned into the exit code. If stdout
+// failed, the command did not deliver its result: that is never ExitOK, even
+// for a verification that passed.
+func (a *App) exitCode(name string, err error) int {
+	werr := a.out.err
+	if werr != nil && errors.Is(err, werr) {
+		err = nil // already covered by the write failure below
+	}
+	code := a.errorCode(err)
+	if werr == nil {
+		return code
+	}
+	a.reportWriteFailure(name, werr)
+	if code == ExitOK {
+		return ExitFail
+	}
+	return code
+}
+
+func (a *App) errorCode(err error) int {
 	var ee exitError
 	switch {
 	case err == nil, errors.Is(err, flag.ErrHelp):

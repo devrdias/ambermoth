@@ -83,7 +83,7 @@ func (a *App) cmdPack(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	printPackWritten(a.env.Stdout, m, pa.out)
+	printPackWritten(a.out, m, pa.out)
 	return nil
 }
 
@@ -139,10 +139,10 @@ func (a *App) cmdVerifyPack(_ context.Context, args []string) error {
 		return err
 	}
 	if *asJSON {
-		err = writeJSON(a.env.Stdout, map[string]any{"ok": r.OK(), "errors": r.Errors, "warnings": r.Warnings,
+		err = writeJSON(a.out, map[string]any{"ok": r.OK(), "errors": r.Errors, "warnings": r.Warnings,
 			"notes": r.Notes, "ledger": r.Ledger, "manifest": r.Manifest})
 	} else {
-		printPackReport(a.env.Stdout, r, *reportPath)
+		printPackReport(a.out, r, *reportPath)
 	}
 	if err != nil {
 		return err
@@ -200,7 +200,7 @@ func (a *App) cmdCheckSample(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(a.env.Stdout, "seq %d request:  %s\nseq %d response: %s\n", *seq, sampleResult(rb != nil, okReq), *seq, sampleResult(sb != nil, okResp))
+	_, _ = fmt.Fprintf(a.out, "seq %d request:  %s\nseq %d response: %s\n", *seq, sampleResult(rb != nil, okReq), *seq, sampleResult(sb != nil, okResp))
 	if (rb != nil && !okReq) || (sb != nil && !okResp) {
 		return exitError(ExitFail)
 	}
@@ -244,8 +244,8 @@ func (a *App) cmdReconcile(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	printLines(a.env.Stdout, " ", lines)
-	_, _ = fmt.Fprintf(a.env.Stdout, "reconciliation %s, recorded at seq %d\n", strings.ToUpper(e.Str("result")), e.Seq())
+	printLines(a.out, " ", lines)
+	_, _ = fmt.Fprintf(a.out, "reconciliation %s, recorded at seq %d\n", strings.ToUpper(e.Str("result")), e.Seq())
 	return nil
 }
 
@@ -265,13 +265,13 @@ func (a *App) cmdAlerts(_ context.Context, args []string) error {
 	}
 	as := report.Alerts(es, a.now(), report.AlertConfig{})
 	if *asJSON {
-		return writeJSON(a.env.Stdout, as)
+		return writeJSON(a.out, as)
 	}
 	if len(as) == 0 {
-		_, _ = fmt.Fprintln(a.env.Stdout, "No alerts. (Alerts are advisory: they point at traffic worth explaining, not at wrongdoing.)")
+		_, _ = fmt.Fprintln(a.out, "No alerts. (Alerts are advisory: they point at traffic worth explaining, not at wrongdoing.)")
 	}
 	for _, al := range as {
-		_, _ = fmt.Fprintf(a.env.Stdout, "[review · %s] %s\n", al.Kind, al.Message)
+		_, _ = fmt.Fprintf(a.out, "[review · %s] %s\n", al.Kind, al.Message)
 	}
 	return nil
 }
@@ -296,7 +296,7 @@ func (a *App) cmdReport(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	printSummary(a.env.Stdout, report.Summarize(es, f))
+	printSummary(a.out, report.Summarize(es, f))
 	return nil
 }
 
