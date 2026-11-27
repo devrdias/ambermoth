@@ -1,0 +1,158 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 6,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 4,
+      "retagged": 0,
+      "by_endpoint": {
+        "": 6
+      },
+      "by_model": {
+        "": 6
+      },
+      "by_day": {
+        "2026-03-01": 6
+      },
+      "by_key": {
+        "": 6
+      },
+      "first": "2026-03-01T00:00:00.000Z",
+      "last": "2026-03-01T00:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 1,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "",
+          "prompt_hmac": "",
+          "output_hmac": ""
+        },
+        {
+          "seq": 2,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "",
+          "prompt_hmac": "",
+          "output_hmac": ""
+        },
+        {
+          "seq": 3,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "",
+          "prompt_hmac": "",
+          "output_hmac": ""
+        }
+      ]
+    },
+    "by_purpose": {
+      "p": {
+        "calls": 6,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 4,
+        "retagged": 0,
+        "by_endpoint": {
+          "": 6
+        },
+        "by_model": {
+          "": 6
+        },
+        "by_day": {
+          "2026-03-01": 6
+        },
+        "by_key": {
+          "": 6
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          },
+          {
+            "seq": 2,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 6,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 4,
+        "retagged": 0,
+        "by_endpoint": {
+          "": 6
+        },
+        "by_model": {
+          "": 6
+        },
+        "by_day": {
+          "2026-03-01": 6
+        },
+        "by_key": {
+          "": 6
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          },
+          {
+            "seq": 2,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": null,
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": null,
+  "Original": {},
+  "Effective": {
+    "1": "p",
+    "2": "p",
+    "3": "p",
+    "4": "p",
+    "5": "p",
+    "6": "p"
+  }
+}

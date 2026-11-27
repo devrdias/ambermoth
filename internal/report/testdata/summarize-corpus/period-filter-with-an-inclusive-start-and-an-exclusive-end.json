@@ -1,0 +1,189 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 6,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 6,
+      "by_endpoint": {
+        "chat": 6
+      },
+      "by_model": {
+        "m1": 6
+      },
+      "by_day": {
+        "2026-03-02": 2,
+        "2026-03-03": 2,
+        "2026-03-04": 2
+      },
+      "by_key": {
+        "sha256:k1": 6
+      },
+      "first": "2026-03-02T00:00:00.000Z",
+      "last": "2026-03-04T23:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 3,
+          "ts": "2026-03-02T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 4,
+          "ts": "2026-03-02T23:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 5,
+          "ts": "2026-03-03T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        }
+      ]
+    },
+    "by_purpose": {
+      "eval": {
+        "calls": 6,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 6,
+        "by_endpoint": {
+          "chat": 6
+        },
+        "by_model": {
+          "m1": 6
+        },
+        "by_day": {
+          "2026-03-02": 2,
+          "2026-03-03": 2,
+          "2026-03-04": 2
+        },
+        "by_key": {
+          "sha256:k1": 6
+        },
+        "first": "2026-03-02T00:00:00.000Z",
+        "last": "2026-03-04T23:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 3,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 4,
+            "ts": "2026-03-02T23:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 5,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 6,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 6,
+        "by_endpoint": {
+          "chat": 6
+        },
+        "by_model": {
+          "m1": 6
+        },
+        "by_day": {
+          "2026-03-02": 2,
+          "2026-03-03": 2,
+          "2026-03-04": 2
+        },
+        "by_key": {
+          "sha256:k1": 6
+        },
+        "first": "2026-03-02T00:00:00.000Z",
+        "last": "2026-03-04T23:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 3,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 4,
+            "ts": "2026-03-02T23:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 5,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": [
+    {
+      "by": "b",
+      "new_purpose": "eval",
+      "reason": "r",
+      "seq": 13,
+      "target_from": 1,
+      "target_to": 12,
+      "ts": "2026-03-20T00:00:00.000Z",
+      "type": "amendment"
+    }
+  ],
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": [
+    {
+      "key_fp": "sha256:k1",
+      "provider": "openai",
+      "calls": 6,
+      "enrolled": false
+    }
+  ],
+  "Original": {
+    "3": "untagged",
+    "4": "untagged",
+    "5": "untagged",
+    "6": "untagged",
+    "7": "untagged",
+    "8": "untagged"
+  },
+  "Effective": {
+    "3": "eval",
+    "4": "eval",
+    "5": "eval",
+    "6": "eval",
+    "7": "eval",
+    "8": "eval"
+  }
+}

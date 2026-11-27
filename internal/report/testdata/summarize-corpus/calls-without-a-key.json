@@ -1,0 +1,111 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 1,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 0,
+      "by_endpoint": {
+        "": 1
+      },
+      "by_model": {
+        "": 1
+      },
+      "by_day": {
+        "2026-03-01": 1
+      },
+      "by_key": {
+        "": 1
+      },
+      "first": "2026-03-01T00:00:00.000Z",
+      "last": "2026-03-01T00:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 1,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "",
+          "prompt_hmac": "",
+          "output_hmac": ""
+        }
+      ]
+    },
+    "by_purpose": {
+      "prod": {
+        "calls": 1,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "": 1
+        },
+        "by_model": {
+          "": 1
+        },
+        "by_day": {
+          "2026-03-01": 1
+        },
+        "by_key": {
+          "": 1
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 1,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "": 1
+        },
+        "by_model": {
+          "": 1
+        },
+        "by_day": {
+          "2026-03-01": 1
+        },
+        "by_key": {
+          "": 1
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "",
+            "prompt_hmac": "",
+            "output_hmac": ""
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": null,
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": null,
+  "Original": {},
+  "Effective": {
+    "1": "prod"
+  }
+}

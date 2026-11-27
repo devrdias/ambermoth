@@ -1,0 +1,221 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 3,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 0,
+      "by_endpoint": {
+        "chat": 3
+      },
+      "by_model": {
+        "m1": 3
+      },
+      "by_day": {
+        "2026-03-02": 1,
+        "2026-03-04": 2
+      },
+      "by_key": {
+        "sha256:new": 2,
+        "sha256:old": 1
+      },
+      "first": "2026-03-02T00:00:00.000Z",
+      "last": "2026-03-04T01:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 2,
+          "ts": "2026-03-02T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 5,
+          "ts": "2026-03-04T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 6,
+          "ts": "2026-03-04T01:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        }
+      ]
+    },
+    "by_purpose": {
+      "untagged": {
+        "calls": 3,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 3
+        },
+        "by_model": {
+          "m1": 3
+        },
+        "by_day": {
+          "2026-03-02": 1,
+          "2026-03-04": 2
+        },
+        "by_key": {
+          "sha256:new": 2,
+          "sha256:old": 1
+        },
+        "first": "2026-03-02T00:00:00.000Z",
+        "last": "2026-03-04T01:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 2,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 5,
+            "ts": "2026-03-04T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 6,
+            "ts": "2026-03-04T01:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 3,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 3
+        },
+        "by_model": {
+          "m1": 3
+        },
+        "by_day": {
+          "2026-03-02": 1,
+          "2026-03-04": 2
+        },
+        "by_key": {
+          "sha256:new": 2,
+          "sha256:old": 1
+        },
+        "first": "2026-03-02T00:00:00.000Z",
+        "last": "2026-03-04T01:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 2,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 5,
+            "ts": "2026-03-04T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 6,
+            "ts": "2026-03-04T01:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": null,
+  "KeyEvents": [
+    {
+      "action": "enroll",
+      "key_fp": "sha256:old",
+      "provider": "openai",
+      "seq": 1,
+      "ts": "2026-03-01T01:00:00.000Z",
+      "type": "key_event"
+    },
+    {
+      "action": "enroll",
+      "key_fp": "sha256:new",
+      "provider": "openai",
+      "seq": 3,
+      "ts": "2026-03-03T01:00:00.000Z",
+      "type": "key_event"
+    },
+    {
+      "action": "revoke",
+      "key_fp": "sha256:old",
+      "provider": "openai",
+      "seq": 4,
+      "ts": "2026-03-03T01:00:00.000Z",
+      "type": "key_event"
+    },
+    {
+      "action": "enroll",
+      "key_fp": "sha256:old",
+      "provider": "openai",
+      "seq": 7,
+      "ts": "2026-03-05T01:00:00.000Z",
+      "type": "key_event"
+    },
+    {
+      "action": "auto_enroll",
+      "key_fp": "sha256:solo",
+      "provider": "anthropic",
+      "seq": 8,
+      "ts": "2026-03-05T01:00:00.000Z",
+      "type": "key_event"
+    }
+  ],
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": [
+    {
+      "key_fp": "sha256:new",
+      "provider": "openai",
+      "calls": 2,
+      "enrolled": true
+    },
+    {
+      "key_fp": "sha256:old",
+      "provider": "openai",
+      "calls": 1,
+      "enrolled": true
+    },
+    {
+      "key_fp": "sha256:solo",
+      "provider": "anthropic",
+      "calls": 0,
+      "enrolled": true
+    }
+  ],
+  "Original": {},
+  "Effective": {
+    "2": "untagged",
+    "5": "untagged",
+    "6": "untagged"
+  }
+}
