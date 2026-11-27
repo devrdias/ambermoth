@@ -4,6 +4,7 @@ package pack
 import (
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -492,7 +493,7 @@ func renderSummary(m *Manifest, s *report.Summary, v *ledger.Report, banner *Ver
 		"fmtT": func(t time.Time) string { return ledger.FormatTime(t) },
 		"lag":  ledger.FormatLag,
 	}
-	t, err := template.New("summary").Funcs(funcs).Parse(summaryTmpl)
+	t, err := template.New("summary").Option("missingkey=error").Funcs(funcs).Parse(summaryTmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -524,21 +525,26 @@ func renderSummary(m *Manifest, s *report.Summary, v *ledger.Report, banner *Ver
 	return buf.Bytes(), err
 }
 
+// noFirstCommit stands in for the day a code link's history begins when the
+// link has none (a path with no commits). It is a placeholder for the sender,
+// like the other bracketed parts of the letter.
+const noFirstCommit = "[date not recorded]"
+
+// renderLetter fills letterTmpl. Every key the template reads has a value, and
+// a missing key is an error, so the letter can never print "<no value>".
 func renderLetter(m *Manifest, s *report.Summary) ([]byte, error) {
-	t := ttemplate.Must(ttemplate.New("letter").Parse(letterTmpl))
+	t := ttemplate.Must(ttemplate.New("letter").Option("missingkey=error").Parse(letterTmpl))
 	rs := rows(m.Totals)
 	d := map[string]any{"Provider": m.ProviderFilter, "Account": m.Account, "From": m.Period.From, "To": m.Period.To,
-		"Calls": fmtN(m.Totals.All.Calls), "Keys": len(s.Keys)}
+		"Calls": fmtN(m.Totals.All.Calls), "Keys": len(s.Keys),
+		"TopPurpose": "[purpose]", "TopShare": "[share]", "TopLink": "", "TopLinkSince": ""}
 	if d["Provider"] == "" {
 		d["Provider"] = "[provider]"
 	}
 	if len(rs) > 0 {
 		d["TopPurpose"], d["TopShare"] = rs[0].Name, rs[0].Share
 		if link, since := codeLinkFor(s, rs[0].Name); link != "" {
-			d["TopLink"] = link
-			if since != "" {
-				d["TopLinkSince"] = since
-			}
+			d["TopLink"], d["TopLinkSince"] = link, cmp.Or(since, noFirstCommit)
 		}
 	}
 	var b bytes.Buffer

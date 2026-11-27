@@ -112,13 +112,48 @@ func TestLetterSaysNothingOfCodeWithoutALinkForTheLargestPurpose(t *testing.T) {
 	}
 }
 
-func TestLetterPrintsNoValueWhenTheLinkHasNoFirstCommitDay(t *testing.T) {
+func TestLetterSaysSoWhenTheLinkHasNoFirstCommitDay(t *testing.T) {
 	e := newEnv(t)
 	e.link(0, "eval", "r", "abcdef", "")
 	e.call(1, "anthropic", "eval")
 	letter := letterOf(t, e, e.opts())
-	if !strings.Contains(letter, producedBy+"r @ abcdef, whose history begins <no value>.") {
+	if !strings.Contains(letter, producedBy+"r @ abcdef, whose history begins [date not recorded].") {
 		t.Errorf("letter:\n%s", letter)
+	}
+}
+
+func bareBucket() *report.Bucket { return &report.Bucket{Exemplars: []report.Exemplar{{}}} }
+
+// Every field an entry may lack is missing here: nothing the templates print
+// may come out as Go's placeholder for a missing value.
+func TestLetterAndSummaryNeverPrintNoValue(t *testing.T) {
+	bare := ledger.Entry{}
+	withPurpose := ledger.Entry{"purpose": "eval"}
+	summary := &report.Summary{
+		CodeLinks: []ledger.Entry{withPurpose}, KeyEvents: []ledger.Entry{bare}, Gaps: []ledger.Entry{bare},
+		Amendments: []ledger.Entry{bare}, Reconciliations: []ledger.Entry{bare}, Keys: []*report.KeyInfo{{}},
+	}
+	withCalls := &pack.Manifest{Totals: report.Totals{All: bareBucket(),
+		ByPurpose: map[string]*report.Bucket{"eval": bareBucket()}, ByProvider: map[string]*report.Bucket{"p": bareBucket()}}}
+	noCalls := &pack.Manifest{Totals: report.Totals{All: bareBucket()}}
+	manifests := map[string]*pack.Manifest{"with a purpose": withCalls, "without calls": noCalls}
+	for name, m := range manifests {
+		t.Run(name, func(t *testing.T) {
+			letter, err := pack.RenderLetter(m, summary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			html, err := pack.RenderSummary(m, summary, &ledger.Report{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outputs := map[string]string{"letter": string(letter), "summary": string(html)}
+			for what, out := range outputs {
+				if strings.Contains(out, "<no value>") || strings.Contains(out, "&lt;no value&gt;") {
+					t.Errorf("%s prints a missing value:\n%s", what, out)
+				}
+			}
+		})
 	}
 }
 
