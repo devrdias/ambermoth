@@ -414,11 +414,30 @@ func TestBuildDisclosures(t *testing.T) {
 			t.Error("verify-pack does not note the disclosures")
 		}
 	})
-	t.Run("lists a seq twice when it is given twice", func(t *testing.T) {
+	t.Run("lists a seq once when it is given more than once", func(t *testing.T) {
 		o := base
-		o.Disclose = []int64{4, 4}
-		if m := e.build(o); !reflect.DeepEqual(m.Disclosed, []int64{4, 4}) {
-			t.Errorf("disclosed = %v", m.Disclosed)
+		o.Disclose = []int64{5, 4, 5, 4, 4}
+		m := e.build(o)
+		if !reflect.DeepEqual(m.Disclosed, []int64{4, 5}) {
+			t.Errorf("disclosed = %v, want [4 5]", m.Disclosed)
+		}
+		var keys map[string]string
+		if err := json.Unmarshal(readPack(t, o.Out)["disclosures/entry-keys.json"], &keys); err != nil {
+			t.Fatal(err)
+		}
+		if len(keys) != 2 || keys["4"] == "" || keys["5"] == "" {
+			t.Errorf("keys file holds %v, want exactly seqs 4 and 5", keys)
+		}
+		if r := e.verify(o.Out); !r.OK() || !strings.Contains(strings.Join(r.Notes, "\n"), "2 entr(ies) disclosed for sample checking: [4 5]") {
+			t.Errorf("verify-pack: errors %v, notes %v", r.Errors, r.Notes)
+		}
+	})
+	t.Run("accepts a pack from an older version that lists a seq twice", func(t *testing.T) {
+		g := newDisclosedPack(t)
+		d := g.draft(t)
+		d.m.Disclosed = []int64{1, 1}
+		if r := g.e.verify(d.write(false)); !r.OK() {
+			t.Errorf("verify-pack rejects the duplicate: %v", lines(r))
 		}
 	})
 	t.Run("writes an empty list and no file when nothing is disclosed", func(t *testing.T) {

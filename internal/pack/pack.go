@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -326,11 +327,10 @@ func plainFileName(name string) bool {
 }
 
 // addDisclosures adds the per-entry keys of the disclosed calls, which must be
-// call entries inside seg, and returns their seqs in order.
+// call entries inside seg, and returns their seqs, each once, ascending.
 func addDisclosures(files map[string][]byte, s *ledger.Store, entries, seg []ledger.Entry, seqs []int64) ([]int64, error) {
-	disclosed := []int64{}
 	if len(seqs) == 0 {
-		return disclosed, nil
+		return []int64{}, nil
 	}
 	keys := map[string]string{}
 	for _, q := range seqs {
@@ -338,15 +338,15 @@ func addDisclosures(files map[string][]byte, s *ledger.Store, entries, seg []led
 			return nil, fmt.Errorf("--disclose %d: not a call entry inside the pack segment", q)
 		}
 		keys[strconv.FormatInt(q, 10)] = hex.EncodeToString(ledger.EntryKey(s.MasterKey, entries[q].Str("salt_id")))
-		disclosed = append(disclosed, q)
 	}
 	b, err := json.MarshalIndent(keys, "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	files["disclosures/entry-keys.json"] = append(b, '\n')
-	sort.Slice(disclosed, func(i, j int) bool { return disclosed[i] < disclosed[j] })
-	return disclosed, nil
+	disclosed := slices.Clone(seqs)
+	slices.Sort(disclosed)
+	return slices.Compact(disclosed), nil
 }
 
 // addReadables adds the human-readable files.
