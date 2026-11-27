@@ -244,7 +244,8 @@ func TestReconcileCommand(t *testing.T) {
 func TestReconcileCommandErrors(t *testing.T) {
 	t.Parallel()
 	h := recordedHarness(t)
-	noColumns, noRows := h.workFile("nocols.csv"), h.workFile("norows.csv")
+	noColumns, noRows, badDate := h.workFile("nocols.csv"), h.workFile("norows.csv"), h.workFile("baddate.csv")
+	writeFile(t, badDate, "date,model,input_tokens,output_tokens\n2026-03-04,m,1,1\nyesterday,m,1,1\n")
 	writeFile(t, noColumns, "when,tokens\n2026-03-04,5\n")
 	writeFile(t, noRows, "date,model,input_tokens,output_tokens\n")
 	cases := []runCase{
@@ -252,6 +253,9 @@ func TestReconcileCommandErrors(t *testing.T) {
 		{name: "reports a missing CSV", args: []string{"reconcile", "--provider", "openai", "--csv", h.workFile("none.csv")}, wantCode: cli.ExitFail, wantErr: "no such file"},
 		{name: "reports missing columns", args: []string{"reconcile", "--provider", "openai", "--csv", noColumns}, wantCode: cli.ExitFail, wantErr: "error:"},
 		{name: "reports a CSV without rows", args: []string{"reconcile", "--provider", "openai", "--csv", noRows}, wantCode: cli.ExitFail, wantErr: "CSV has no rows"},
+		{name: "names the row and value of a bad date", args: []string{"reconcile", "--provider", "openai", "--csv", badDate}, wantCode: cli.ExitFail, wantErr: `row 3: invalid date "yesterday"`},
+		{name: "refuses a negative tolerance", args: []string{"reconcile", "--provider", "openai", "--csv", noRows, "--tolerance", "-0.1"}, wantCode: cli.ExitFail, wantErr: "invalid tolerance -0.1"},
+		{name: "refuses a tolerance over 100%", args: []string{"reconcile", "--provider", "openai", "--csv", noRows, "--tolerance", "2"}, wantCode: cli.ExitFail, wantErr: "invalid tolerance 2"},
 	}
 	t.Run("each fails without recording", func(t *testing.T) {
 		for _, c := range cases {

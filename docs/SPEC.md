@@ -214,7 +214,8 @@ Written when the proxy failed to record calls (fail-open, §6.4):
 Result of comparing the ledger with a provider usage export:
 `provider`, `period_from`, `period_to`, `source_sha256` (hash of the export
 file), `ledger_tokens_in/out`, `export_tokens_in/out`, `days_mismatched`,
-`result` ∈ `match | mismatch`.
+`result` ∈ `match | mismatch`, `tolerance_pct` (the tolerance in whole percent,
+see §10).
 
 ## 5. Purpose tags
 
@@ -501,6 +502,11 @@ not a command error.
   its calls carry no tokens. `period_from`/`period_to` are those two days and
   `ledger_tokens_in/out` sum the provider's calls over the whole period. Calls
   outside the period are not counted.
+  A row whose `date` is not a day (`YYYY-MM-DD`, optionally followed by `T` or
+  a space and a time) fails the whole run with an error that names the row and
+  the value; rows are never skipped, and nothing is appended. The tolerance is
+  a fraction from 0 to 1; anything else is refused. It is recorded as
+  `tolerance_pct`, in whole percent, rounded to the nearest (0.29 is 29).
 - `ambermoth alerts` — advisory only, phrased as "review this":
   - *volume*: a key/purpose's daily calls > 3× its trailing 14-day median;
   - *concentration*: one endpoint/purpose > 80% of a key's last-7-day calls

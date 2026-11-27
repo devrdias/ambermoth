@@ -3,6 +3,7 @@ package ops_test
 import (
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -113,7 +114,7 @@ var reconcileCases = []reconcileCase{
 		name:      "export of zero with ledger tokens is a mismatch at any tolerance",
 		csv:       csvHead + "2026-03-02,m,0,0\n",
 		calls:     []ledgerCall{{day2, "openai", 1, 0}},
-		tolerance: 5, result: "mismatch", mismatched: 1,
+		tolerance: 1, result: "mismatch", mismatched: 1,
 		lines:    []string{"2026-03-02  ledger in/out 1/0  export in/out 0/0  MISMATCH"},
 		ledgerIn: 1, ledgerOut: 0, exportIn: 0, exportOut: 0, from: "2026-03-02", to: "2026-03-02",
 	},
@@ -175,7 +176,7 @@ var reconcileCases = []reconcileCase{
 		calls: []ledgerCall{
 			{day2, "openai", 100, 10}, {day3, "openai", 1, 0}, {day4, "openai", 100, 10},
 		},
-		tolerance: 5, result: "mismatch", mismatched: 1,
+		tolerance: 1, result: "mismatch", mismatched: 1,
 		lines: []string{
 			"2026-03-02  ledger in/out 100/10  export in/out 100/10  ok",
 			"2026-03-03  ledger in/out 1/0  export in/out 0/0  MISMATCH",
@@ -288,32 +289,6 @@ var reconcileCases = []reconcileCase{
 		lines:    []string{"2026-03-02  ledger in/out 57/7  export in/out 57/7  ok"},
 		ledgerIn: 57, ledgerOut: 7, exportIn: 57, exportOut: 7, from: "2026-03-02", to: "2026-03-02",
 	},
-	{
-		name:      "a date that does not parse is kept as its own day and never matches the ledger",
-		csv:       csvHead + "garbage,m,5,5\n",
-		calls:     []ledgerCall{{day2, "openai", 5, 5}},
-		tolerance: 0.02, result: "mismatch", mismatched: 1,
-		lines:    []string{"garbage  ledger in/out 0/0  export in/out 5/5  MISMATCH"},
-		ledgerIn: 0, ledgerOut: 0, exportIn: 5, exportOut: 5, from: "garbage", to: "garbage",
-	},
-	{
-		name:      "a bad date that sorts last",
-		csv:       csvHead + "2026-03-02,m,5,5\nzzz,m,1,1\n",
-		calls:     []ledgerCall{{day2, "openai", 5, 5}},
-		tolerance: 0.02, result: "mismatch", mismatched: 1,
-		lines: []string{
-			"2026-03-02  ledger in/out 5/5  export in/out 5/5  ok",
-			"zzz  ledger in/out 0/0  export in/out 1/1  MISMATCH",
-		},
-		ledgerIn: 5, ledgerOut: 5, exportIn: 6, exportOut: 6, from: "2026-03-02", to: "zzz",
-	},
-	{
-		name:      "a short date is not cut and does not match",
-		csv:       csvHead + "2026-3-2,m,5,5\n",
-		tolerance: 0.02, result: "mismatch", mismatched: 1,
-		lines:    []string{"2026-3-2  ledger in/out 0/0  export in/out 5/5  MISMATCH"},
-		exportIn: 5, exportOut: 5, from: "2026-3-2", to: "2026-3-2",
-	},
 }
 
 func TestReconcileCases(t *testing.T) {
@@ -364,6 +339,13 @@ var reconcileErrCases = []reconcileErrCase{
 		want: `CSV missing column "date" (need date,model,input_tokens,output_tokens)`},
 	{name: "row shorter than the header", csv: csvHead + "2026-03-02,m,1\n", want: "wrong number of fields"},
 	{name: "row longer than the header", csv: csvHead + "2026-03-02,m,1,1,9\n", want: "wrong number of fields"},
+	{name: "a date that does not parse", csv: csvHead + "2026-03-02,m,1,1\ngarbage,m,5,5\n", want: `row 3: invalid date "garbage"`},
+	{name: "a bad date that sorts last", csv: csvHead + "2026-03-02,m,1,1\nzzz,m,1,1\n", want: `row 3: invalid date "zzz"`},
+	{name: "a short date", csv: csvHead + "2026-3-2,m,5,5\n", want: `row 2: invalid date "2026-3-2"`},
+	{name: "a day that does not exist", csv: csvHead + "2026-02-30,m,5,5\n", want: `row 2: invalid date "2026-02-30"`},
+	{name: "junk after the day", csv: csvHead + "2026-03-02xyz,m,5,5\n", want: `row 2: invalid date "2026-03-02xyz"`},
+	{name: "an empty date", csv: csvHead + "2026-03-02,m,1,1\n,m,5,5\n", want: `row 3: invalid date ""`},
+	{name: "the row number counts blank lines", csv: csvHead + "\n2026-03-02,m,1,1\n\nbad,m,5,5\n", want: `row 5: invalid date "bad"`},
 	{name: "unterminated quote", csv: csvHead + "\"2026-03-02,m,1,1\n", want: "extraneous or missing"},
 }
 
@@ -462,11 +444,11 @@ func TestReconcileRecordsEntry(t *testing.T) {
 func TestReconcileTolerancePct(t *testing.T) {
 	s := newFixedStore(t)
 	path := writeCSV(t, csvHead+"2026-03-02,m,0,0\n")
-	// float64 cannot hold these exactly, so the whole percent truncates.
+	// float64 cannot hold these exactly, so the whole percent is rounded.
 	pcts := []struct {
 		tol  float64
 		want int64
-	}{{0, 0}, {0.02, 2}, {0.1, 10}, {0.5, 50}, {0.29, 28}, {0.07, 7}}
+	}{{0, 0}, {0.02, 2}, {0.1, 10}, {0.5, 50}, {0.29, 29}, {0.07, 7}, {0.57, 57}, {0.58, 58}, {1, 100}}
 	for _, p := range pcts {
 		e, _, err := ops.Reconcile(s, "openai", path, p.tol)
 		if err != nil {
@@ -475,5 +457,31 @@ func TestReconcileTolerancePct(t *testing.T) {
 		if got := e.Int("tolerance_pct"); got != p.want {
 			t.Errorf("tolerance %v recorded as %d, want %d", p.tol, got, p.want)
 		}
+	}
+}
+
+type toleranceCase struct {
+	name string
+	tol  float64
+}
+
+func TestReconcileRefusesBadTolerance(t *testing.T) {
+	nan := math.NaN()
+	cases := []toleranceCase{
+		{"negative", -0.01}, {"over 100%", 1.01}, {"absurd", 50}, {"not a number", nan}, {"infinite", math.Inf(1)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newFixedStore(t)
+			before := ledgerBytes(t, s)
+			e, _, err := ops.Reconcile(s, "openai", writeCSV(t, csvHead+"2026-03-02,m,1,1\n"), c.tol)
+			if err == nil || !strings.Contains(err.Error(), "invalid tolerance") {
+				t.Fatalf("error %v, want invalid tolerance", err)
+			}
+			if e != nil {
+				t.Errorf("want no entry, got %v", e)
+			}
+			assertAppendOnly(t, before, ledgerBytes(t, s), 0)
+		})
 	}
 }
