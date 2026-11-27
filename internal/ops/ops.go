@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,7 +22,7 @@ import (
 	"time"
 
 	"github.com/devrdias/ambermoth/internal/ledger"
-	"github.com/devrdias/ambermoth/internal/report"
+	"github.com/devrdias/ambermoth/internal/proxy"
 	"github.com/devrdias/ambermoth/internal/trust"
 	"github.com/devrdias/ambermoth/internal/tsa"
 )
@@ -136,6 +137,9 @@ func AnchorVerifier(roots *x509.CertPool, allowUnpinned bool) ledger.AnchorVerif
 
 // Amend appends an amendment entry (SPEC §4.3).
 func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by string) (ledger.Entry, error) {
+	if strings.TrimSpace(annotation) == "" {
+		annotation = ""
+	}
 	if err := checkAmendment(newPurpose, annotation, reason, by); err != nil {
 		return nil, err
 	}
@@ -154,13 +158,30 @@ func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by s
 }
 
 func checkAmendment(newPurpose, annotation, reason, by string) error {
-	if reason == "" || by == "" {
+	if strings.TrimSpace(reason) == "" || strings.TrimSpace(by) == "" {
 		return errors.New("--reason and --by are required: amendments must say why and who")
 	}
 	if newPurpose == "" && annotation == "" {
 		return errors.New("give --purpose and/or --annotation")
 	}
+	if newPurpose == "" {
+		return nil
+	}
+	if err := CheckPurpose(newPurpose); err != nil {
+		return err
+	}
+	if newPurpose == "other-declared" && annotation == "" {
+		return errors.New("purpose other-declared needs an annotation that says what it is (docs/SPEC.md §5)")
+	}
 	return nil
+}
+
+// CheckPurpose refuses a purpose that is not in the taxonomy or an x- tag.
+func CheckPurpose(p string) error {
+	if proxy.ValidPurpose(p) {
+		return nil
+	}
+	return fmt.Errorf("invalid purpose %q (taxonomy: %s, or x-custom)", p, strings.Join(proxy.Taxonomy(), ", "))
 }
 
 // checkAmendTarget refuses a range outside the ledger or without any call in it.
@@ -261,6 +282,9 @@ func redactURL(u string) string {
 // Reconcile compares per-day token totals with a provider usage export CSV
 // (header: date,model,input_tokens,output_tokens) and records the result.
 func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (ledger.Entry, []string, error) {
+	if !(tolerance >= 0 && tolerance <= 1) {
+		return nil, nil, fmt.Errorf("invalid tolerance %v: want a fraction from 0 to 1 (0.02 is 2%%)", tolerance)
+	}
 	raw, err := os.ReadFile(csvPath)
 	if err != nil {
 		return nil, nil, err
@@ -274,8 +298,9 @@ func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (le
 	if err != nil {
 		return nil, nil, err
 	}
-	cmp := compareDays(days, exp, dayTotals(entries, provider, exp), tolerance)
-	e := reconciliationEntry(provider, raw, days, periodTotals(entries, provider, days), cmp, tolerance)
+	led := dayTotals(entries, provider, days[0], days[len(days)-1])
+	cmp := compareDays(unionDays(days, led), exp, led, tolerance)
+	e := reconciliationEntry(provider, raw, days, sumTallies(led), cmp, tolerance)
 	return e, cmp.lines, s.Append(e)
 }
 
@@ -305,7 +330,10 @@ func readExport(raw []byte) (map[string]*tally, error) {
 		if err != nil {
 			return nil, err
 		}
-		addRow(exp, col, rec)
+		line, _ := r.FieldPos(col["date"])
+		if err := addRow(exp, col, rec); err != nil {
+			return nil, fmt.Errorf("row %d: %w", line, err)
+		}
 	}
 	if len(exp) == 0 {
 		return nil, errors.New("CSV has no rows")
@@ -313,18 +341,34 @@ func readExport(raw []byte) (map[string]*tally, error) {
 	return exp, nil
 }
 
-// addRow adds one CSV row to its day. Counts that do not parse are zero, and
-// a date is kept as written apart from being cut to its first ten characters.
-func addRow(exp map[string]*tally, col map[string]int, rec []string) {
-	d := strings.TrimSpace(rec[col["date"]])
-	if len(d) >= 10 {
-		d = d[:10]
+// addRow adds one CSV row to its day. Counts that do not parse are zero. The
+// date is a day, optionally followed by a time (T or space, then anything).
+func addRow(exp map[string]*tally, col map[string]int, rec []string) error {
+	d, err := parseDay(rec[col["date"]])
+	if err != nil {
+		return err
 	}
 	if exp[d] == nil {
 		exp[d] = &tally{}
 	}
 	exp[d].in += parseCount(rec[col["input_tokens"]])
 	exp[d].out += parseCount(rec[col["output_tokens"]])
+	return nil
+}
+
+// parseDay returns the YYYY-MM-DD day at the start of v.
+func parseDay(v string) (string, error) {
+	d := strings.TrimSpace(v)
+	if len(d) > 10 && d[10] != 'T' && d[10] != ' ' {
+		return "", fmt.Errorf("invalid date %q (want YYYY-MM-DD)", v)
+	}
+	if len(d) > 10 {
+		d = d[:10]
+	}
+	if _, err := time.Parse("2006-01-02", d); err != nil {
+		return "", fmt.Errorf("invalid date %q (want YYYY-MM-DD)", v)
+	}
+	return d, nil
 }
 
 func parseCount(s string) int64 {
@@ -341,15 +385,17 @@ func sortedDays(exp map[string]*tally) []string {
 	return days
 }
 
-// dayTotals sums the provider's calls on the days the export has rows for.
-func dayTotals(entries []ledger.Entry, provider string, exp map[string]*tally) map[string]*tally {
+// dayTotals sums the provider's calls per day from the day first to the day
+// last, both inclusive. The period is the export's first to last day, so a
+// day in it with calls but no export row is still compared.
+func dayTotals(entries []ledger.Entry, provider, first, last string) map[string]*tally {
 	led := map[string]*tally{}
 	for _, e := range entries {
 		if e == nil || e.Type() != ledger.TypeCall || e.Str("provider") != provider {
 			continue
 		}
 		d := e.Day()
-		if exp[d] == nil {
+		if d < first || d > last {
 			continue
 		}
 		if led[d] == nil {
@@ -361,13 +407,25 @@ func dayTotals(entries []ledger.Entry, provider string, exp map[string]*tally) m
 	return led
 }
 
-// periodTotals sums the provider's calls from the first export day to the
-// end of the last. A day that does not parse is a zero time.
-func periodTotals(entries []ledger.Entry, provider string, days []string) tally {
-	from, _ := time.Parse("2006-01-02", days[0])
-	to, _ := time.Parse("2006-01-02", days[len(days)-1])
-	sum := report.Summarize(entries, report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: provider})
-	return tally{sum.Totals.All.TokensIn, sum.Totals.All.TokensOut}
+// unionDays returns the days of the export and of the ledger, sorted.
+func unionDays(days []string, led map[string]*tally) []string {
+	all := map[string]*tally{}
+	for _, d := range days {
+		all[d] = nil
+	}
+	for d := range led {
+		all[d] = nil
+	}
+	return sortedDays(all)
+}
+
+func sumTallies(m map[string]*tally) tally {
+	var sum tally
+	for _, t := range m {
+		sum.in += t.in
+		sum.out += t.out
+	}
+	return sum
 }
 
 // comparison is the per-day result of checking the ledger against the export.
@@ -380,18 +438,21 @@ type comparison struct {
 func compareDays(days []string, exp, led map[string]*tally, tolerance float64) comparison {
 	var c comparison
 	for _, d := range days {
-		l := led[d]
+		l, x := led[d], exp[d]
 		if l == nil {
 			l = &tally{}
 		}
-		c.export.in += exp[d].in
-		c.export.out += exp[d].out
+		if x == nil {
+			x = &tally{}
+		}
+		c.export.in += x.in
+		c.export.out += x.out
 		status := "ok"
-		if outside(l.in, exp[d].in, tolerance) || outside(l.out, exp[d].out, tolerance) {
+		if outside(l.in, x.in, tolerance) || outside(l.out, x.out, tolerance) {
 			status = "MISMATCH"
 			c.mismatched++
 		}
-		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, exp[d].in, exp[d].out, status))
+		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, x.in, x.out, status))
 	}
 	return c
 }
@@ -414,7 +475,7 @@ func reconciliationEntry(provider string, raw []byte, days []string, led tally, 
 		"period_from": days[0], "period_to": days[len(days)-1], "source_sha256": ledger.SHA256Bytes(raw),
 		"ledger_tokens_in": led.in, "ledger_tokens_out": led.out,
 		"export_tokens_in": c.export.in, "export_tokens_out": c.export.out, "days_mismatched": c.mismatched, "result": result,
-		"tolerance_pct": int64(tolerance * 100)}
+		"tolerance_pct": int64(math.Round(tolerance * 100))}
 }
 
 // requireColumns returns an error naming the first of names missing from col.

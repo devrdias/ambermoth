@@ -229,7 +229,7 @@ func (a *App) cmdReconcile(_ context.Context, args []string) error {
 	fs, dir := a.newFlags("reconcile")
 	provider := fs.String("provider", "", "provider name as used by the proxy (required)")
 	csvPath := fs.String("csv", "", "usage export CSV: date,model,input_tokens,output_tokens (required)")
-	tol := fs.Float64("tolerance", 0.02, "allowed relative difference per day")
+	tol := fs.Float64("tolerance", 0.02, "allowed relative difference per day, from 0 to 1 (0.02 is 2%)")
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}

@@ -272,6 +272,7 @@ type badEntryCase struct {
 
 var badEntryCases = []badEntryCase{
 	{"a float", func() ledger.Entry { return ledger.Entry{"type": ledger.TypeCall, "cost": 1.5} }, "entry 4: unsupported type float64"},
+	{"a number outside 2^53", func() ledger.Entry { return ledger.Entry{"type": ledger.TypeCall, "n": int64(1) << 60} }, `entry 4: number out of range "1152921504606846976"`},
 	{"invalid UTF-8", func() ledger.Entry { return ledger.Entry{"type": ledger.TypeCall, "note": "\xff"} }, "entry 4: invalid UTF-8 in string"},
 }
 
@@ -284,6 +285,9 @@ func TestAppendUnhashableEntryWritesNothing(t *testing.T) {
 			err := s.Append(call(), c.bad())
 			if err == nil || err.Error() != c.wantErr {
 				t.Fatalf("err = %v, want %q", err, c.wantErr)
+			}
+			if !errors.Is(err, ledger.ErrEncode) {
+				t.Errorf("err = %v, want it to match ErrEncode", err)
 			}
 			if !bytes.Equal(readBytes(t, s.LedgerPath()), before) {
 				t.Error("part of the batch was written")

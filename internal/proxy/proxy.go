@@ -242,6 +242,22 @@ func truncateUTF8(s string, n int) string {
 	return s[:i] + truncMarker
 }
 
+// outOfRangeNote is added to the note of a call whose provider usage had a
+// count too large to record.
+const outOfRangeNote = "usage count out of range, ignored"
+
+// recordedNote is the caller's note, followed by outOfRangeNote when a usage
+// count was left out. The result stays within maxNoteBytes.
+func (c *call) recordedNote(u *usage) string {
+	if !u.OutOfRange {
+		return c.note
+	}
+	if c.note == "" {
+		return outOfRangeNote
+	}
+	return truncateUTF8(c.note, maxNoteBytes-1-len(outOfRangeNote)) + " " + outOfRangeNote
+}
+
 // invalidPurposeNote adds the rejected header value to the caller's note. The
 // result stays within maxNoteBytes. The text about the purpose keeps up to half
 // of that, the caller's note the rest, so neither can push the other out.
@@ -482,8 +498,8 @@ func (p *Proxy) record(c *call, status int, stream bool, u *usage, outMAC []byte
 		"prompt_hmac": ledger.FormatHMAC(c.reqMAC.Sum(nil)), "output_hmac": ledger.FormatHMAC(outMAC),
 		"bytes_in": c.reqBytes, "bytes_out": outBytes, "client_aborted": aborted,
 	}
-	if c.note != "" {
-		e["note"] = c.note
+	if note := c.recordedNote(u); note != "" {
+		e["note"] = note
 	}
 	if c.gitRef != "" {
 		e["git_ref"] = c.gitRef

@@ -178,6 +178,13 @@ cut, only the value.
 *effective purpose* of a call is its `purpose`, replaced by each later
 amendment that covers it, in ledger order. Packs show both.
 
+`ambermoth amend` checks what it records. `reason` and `by` must not be blank.
+`new_purpose` must be a taxonomy tag, `untagged` or an `x-` tag (§5), and
+`other-declared` needs a non-blank `annotation`, as it needs a note on a call.
+A blank `annotation` is dropped. The range must lie inside the ledger and hold
+at least one `call`. It may also span other entries (anchors, key events,
+earlier amendments): only the calls in it are amended, the rest are ignored.
+
 ### 4.4 `key_event`
 
 `action` ∈ `enroll | rotate | revoke | auto_enroll`, `key_fp`, `provider`,
@@ -207,7 +214,8 @@ Written when the proxy failed to record calls (fail-open, §6.4):
 Result of comparing the ledger with a provider usage export:
 `provider`, `period_from`, `period_to`, `source_sha256` (hash of the export
 file), `ledger_tokens_in/out`, `export_tokens_in/out`, `days_mismatched`,
-`result` ∈ `match | mismatch`.
+`result` ∈ `match | mismatch`, `tolerance_pct` (the tolerance in whole percent,
+see §10).
 
 ## 5. Purpose tags
 
@@ -261,11 +269,26 @@ Parsing is best-effort and bounded (the proxy keeps at most 4 MiB of a
 non-streaming body and one SSE line at a time for parsing; hashing always
 covers the full body).
 
+A count is a non-negative number; a fraction is cut to a whole number. A
+negative count is ignored. A count above 2^53−1 (the largest integer an entry
+can hold, §3.1) is left out, so the field is `0` as if absent, and the proxy
+appends `usage count out of range, ignored` to the call's `note` (after the
+caller's own note and a space, within the 512 bytes). `usage_reported` is still
+true. The call is recorded either way.
+
 ### 6.4 Failure modes (fail open)
 
 - Ledger write failure or a full write queue MUST NOT block or fail the app's
   request. The writer counts dropped entries and, on the next successful write,
   first appends a `gap` entry.
+- An entry that cannot be encoded (it has no canonical form, §3.1) does not
+  take its batch with it. When appending a batch is refused for that reason,
+  nothing was written; the writer then appends the entries one at a time, in
+  the order queued, and drops only the ones that are refused. They are counted
+  in a `gap` entry with the cause `entry could not be encoded`, which says
+  nothing about the entry. A write error (disk full, I/O) is different: the
+  batch is dropped as a whole and counted, and nothing is retried entry by
+  entry.
 - Durability: entries are written by a single writer goroutine, batched, and
   `fsync`ed at least every 200 ms. This is best-effort durability (an entry
   may be lost if the host crashes within that window); a crash leaves at most a
@@ -488,6 +511,17 @@ not a command error.
   `date,model,input_tokens,output_tokens` (adapters for each provider's export
   format are tracked as issues). Per-day totals are compared with a tolerance
   (default 2%); the result is appended as a `reconciliation` entry.
+  The period is the export's first to last day, inclusive. Every day in it is
+  compared, including a day with provider calls in the ledger and no row in the
+  export: that day counts as export totals of zero, so it is a mismatch unless
+  its calls carry no tokens. `period_from`/`period_to` are those two days and
+  `ledger_tokens_in/out` sum the provider's calls over the whole period. Calls
+  outside the period are not counted.
+  A row whose `date` is not a day (`YYYY-MM-DD`, optionally followed by `T` or
+  a space and a time) fails the whole run with an error that names the row and
+  the value; rows are never skipped, and nothing is appended. The tolerance is
+  a fraction from 0 to 1; anything else is refused. It is recorded as
+  `tolerance_pct`, in whole percent, rounded to the nearest (0.29 is 29).
 - `ambermoth alerts` — advisory only, phrased as "review this":
   - *volume*: a key/purpose's daily calls > 3× its trailing 14-day median;
   - *concentration*: one endpoint/purpose > 80% of a key's last-7-day calls

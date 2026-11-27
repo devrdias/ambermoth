@@ -63,6 +63,20 @@ var amendRefuseCases = []amendRefuseCase{
 		want: "no call entries in range 4..4"},
 	{name: "an amendment is not a call", from: 6, to: 6, purpose: "eval-regression", why: "x", who: "me",
 		want: "no call entries in range 6..6"},
+	{name: "a purpose outside the taxonomy", from: 1, to: 1, purpose: "Not A Tag!", why: "x", who: "me",
+		want: `invalid purpose "Not A Tag!"`},
+	{name: "a bare x- is not a tag", from: 1, to: 1, purpose: "x-", why: "x", who: "me",
+		want: `invalid purpose "x-"`},
+	{name: "a blank reason", from: 1, to: 1, purpose: "x-custom", why: " \t", who: "me",
+		want: "--reason and --by are required"},
+	{name: "a blank author", from: 1, to: 1, purpose: "x-custom", why: "x", who: " ",
+		want: "--reason and --by are required"},
+	{name: "other-declared needs an annotation", from: 1, to: 1, purpose: "other-declared", why: "x", who: "me",
+		want: "other-declared needs an annotation"},
+	{name: "a blank annotation does not satisfy other-declared", from: 1, to: 1, purpose: "other-declared", note: "  ", why: "x", who: "me",
+		want: "other-declared needs an annotation"},
+	{name: "a blank annotation alone is nothing to record", from: 1, to: 1, note: " ", why: "x", who: "me",
+		want: "give --purpose and/or --annotation"},
 	{name: "genesis only is out of range, not a call", from: 0, to: 0, note: "n", why: "x", who: "me",
 		want: "invalid target range 0..0 (head is 6)"},
 }
@@ -101,8 +115,9 @@ var amendOKCases = []amendOKCase{
 	{name: "range over an earlier amendment", from: 5, to: 6, purpose: "rag-query", why: "again", who: "rafa"},
 	{name: "annotation only", from: 1, to: 1, note: "ran during the outage", why: "context", who: "rafa"},
 	{name: "purpose and annotation", from: 1, to: 2, purpose: "dev-experiment", note: "scratch", why: "context", who: "rafa"},
-	{name: "a purpose outside the taxonomy", from: 1, to: 1, purpose: "Not A Tag!", why: "x", who: "rafa"},
-	{name: "a blank reason", from: 1, to: 1, purpose: "x-custom", why: " ", who: "rafa"},
+	{name: "a custom tag", from: 1, to: 1, purpose: "x-custom", why: "x", who: "rafa"},
+	{name: "untagged", from: 1, to: 1, purpose: "untagged", why: "x", who: "rafa"},
+	{name: "other-declared with an annotation", from: 1, to: 1, purpose: "other-declared", note: "vendor audit", why: "x", who: "rafa"},
 }
 
 func TestAmendAppends(t *testing.T) {
@@ -220,4 +235,24 @@ func TestAmendNeverRewritesTargets(t *testing.T) {
 		t.Fatalf("%d entries, want %d", len(after), len(before)+1)
 	}
 	assertAppendOnly(t, raw, ledgerBytes(t, s), 1)
+}
+
+func TestAmendRangeOverNonCallsTouchesOnlyCalls(t *testing.T) {
+	s := amendStore(t)
+	if _, err := ops.Amend(s, 1, 6, "eval-benchmark", "", "whole day", "me"); err != nil {
+		t.Fatal(err)
+	}
+	eff := report.EffectivePurposes(readLedger(t, s))
+	nonCalls := []int64{0, 4, 6, 7}
+	calls := []int64{1, 2, 3, 5}
+	for _, seq := range nonCalls {
+		if p, ok := eff[seq]; ok {
+			t.Errorf("seq %d is not a call but has an effective purpose %q", seq, p)
+		}
+	}
+	for _, seq := range calls {
+		if eff[seq] != "eval-benchmark" {
+			t.Errorf("seq %d: %q, want eval-benchmark", seq, eff[seq])
+		}
+	}
 }
