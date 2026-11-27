@@ -58,7 +58,7 @@ flowchart LR
 ## M1: Hardening (in progress)
 
 - [x] Go rules applied ([docs/go-rules.md](docs/go-rules.md)): rule checker clean, black-box tests, injected clock and logger
-- [ ] Every function under CRAP 10 (`make crap`; 14 left) (good first task)
+- [ ] Every function under CRAP 10 (`make crap`; 10 left) (good first task)
 - [x] CI runs `make rules`
 - [x] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
 - [x] `make lint` clean, and CI runs it

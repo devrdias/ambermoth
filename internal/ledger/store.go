@@ -96,6 +96,27 @@ func Open(dir string, clock Clock) (*Store, error) {
 	if clock == nil {
 		return nil, ErrNilClock
 	}
+	key, err := readMasterKey(dir)
+	if err != nil {
+		return nil, err
+	}
+	s := &Store{Dir: dir, MasterKey: key, lastSeq: -1, clock: clock}
+	g, err := readGenesis(s.path())
+	if err != nil {
+		return nil, err
+	}
+	s.LedgerID = g.Str("ledger_id")
+	if g.Str("hmac_key_commitment") != KeyCommitment(key) {
+		return nil, errors.New("secret.key does not match the genesis key commitment")
+	}
+	if err := s.refreshTail(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// readMasterKey reads and decodes the hex master key in dir.
+func readMasterKey(dir string) ([]byte, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, KeyFile))
 	if err != nil {
 		return nil, fmt.Errorf("reading master key: %w", err)
@@ -104,8 +125,12 @@ func Open(dir string, clock Clock) (*Store, error) {
 	if err != nil || len(key) != 32 {
 		return nil, errors.New("malformed secret.key")
 	}
-	s := &Store{Dir: dir, MasterKey: key, lastSeq: -1, clock: clock}
-	f, err := os.Open(s.path())
+	return key, nil
+}
+
+// readGenesis parses the first line of the ledger at path.
+func readGenesis(path string) (Entry, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -118,15 +143,7 @@ func Open(dir string, clock Clock) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := Entry(gv.(map[string]any))
-	s.LedgerID = g.Str("ledger_id")
-	if g.Str("hmac_key_commitment") != KeyCommitment(key) {
-		return nil, errors.New("secret.key does not match the genesis key commitment")
-	}
-	if err := s.refreshTail(); err != nil {
-		return nil, err
-	}
-	return s, nil
+	return Entry(gv.(map[string]any)), nil
 }
 
 func (s *Store) path() string { return filepath.Join(s.Dir, LedgerFile) }
@@ -214,8 +231,23 @@ func (s *Store) Append(entries ...Entry) error {
 	if err := s.refreshTail(); err != nil {
 		return err
 	}
+	buf, seq, prev, err := s.sealEntries(entries)
+	if err != nil {
+		return err
+	}
+	if err := s.writeSync(buf); err != nil {
+		return err
+	}
+	s.lastSeq, s.lastHash = seq, prev
+	s.size += int64(len(buf))
+	return nil
+}
+
+// sealEntries assigns seq, prev_hash and entry_hash to entries, continuing
+// from the in-memory tail, and returns their canonical lines with the new tail.
+func (s *Store) sealEntries(entries []Entry) (lines []byte, seq int64, prev string, err error) {
 	var buf bytes.Buffer
-	seq, prev := s.lastSeq, s.lastHash
+	seq, prev = s.lastSeq, s.lastHash
 	for _, e := range entries {
 		seq++
 		e["v"] = FormatVersion
@@ -227,22 +259,27 @@ func (s *Store) Append(entries ...Entry) error {
 		delete(e, "entry_hash")
 		h, err := ComputeHash(e)
 		if err != nil {
-			return fmt.Errorf("entry %d: %w", seq, err)
+			return nil, 0, "", fmt.Errorf("entry %d: %w", seq, err)
 		}
 		e["entry_hash"] = h
 		line, err := canon.Marshal(map[string]any(e))
 		if err != nil {
-			return err
+			return nil, 0, "", err
 		}
 		buf.Write(line)
 		buf.WriteByte('\n')
 		prev = h
 	}
+	return buf.Bytes(), seq, prev, nil
+}
+
+// writeSync appends data to the ledger file and fsyncs it.
+func (s *Store) writeSync(data []byte) error {
 	f, err := os.OpenFile(s.path(), os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(buf.Bytes()); err != nil {
+	if _, err := f.Write(data); err != nil {
 		_ = f.Close()
 		return err
 	}
@@ -250,12 +287,7 @@ func (s *Store) Append(entries ...Entry) error {
 		_ = f.Close()
 		return err
 	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	s.lastSeq, s.lastHash = seq, prev
-	s.size += int64(buf.Len())
-	return nil
+	return f.Close()
 }
 
 // ReadFile parses every line of a ledger file. It returns raw lines alongside
