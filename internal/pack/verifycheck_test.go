@@ -354,11 +354,44 @@ func hasPrefixLine(ls []string, prefix string) bool {
 	return false
 }
 
-func TestVerifyPackFailsOnASegmentLineTooLongToRead(t *testing.T) {
-	g := newBarePack(t)
-	d := g.draft(t)
-	d.files["ledger/segment.jsonl"] = bytes.Repeat([]byte("a"), 17<<20)
-	if _, err := pack.VerifyPack(d.write(true), g.e.verifyOptions()); err == nil || err.Error() != "bufio.Scanner: token too long" {
-		t.Fatalf("error = %v, want bufio.Scanner: token too long", err)
+func TestVerifyPackReportsALineTooLongToRead(t *testing.T) {
+	huge := bytes.Repeat([]byte("a"), 17<<20)
+	g := newMidPack(t)
+	cases := []struct {
+		name string
+		edit func(d *draft)
+		want string // an exact error of the report
+	}{
+		{"a first segment line", func(d *draft) { d.files["ledger/segment.jsonl"] = huge }, "ledger/segment.jsonl: line 1 is longer than 16 MiB"},
+		{"a later segment line", func(d *draft) {
+			d.files["ledger/segment.jsonl"] = append(append(d.files["ledger/segment.jsonl"], '\n', '\n'), huge...)
+		}, "ledger/segment.jsonl: line 8 is longer than 16 MiB"},
+		{"a context line", func(d *draft) { d.files[contextFile] = huge }, "ledger/context.jsonl: line 1 is longer than 16 MiB"},
+		{"a genesis line", func(d *draft) { d.files["ledger/genesis.json"] = huge }, "ledger/genesis.json: line 1 is longer than 16 MiB"},
 	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := g.draft(t)
+			c.edit(d)
+			r, err := pack.VerifyPack(d.write(true), g.e.verifyOptions())
+			if err != nil {
+				t.Fatalf("VerifyPack: %v, want a report", err)
+			}
+			if r.OK() || !hasLine(lines(r), c.want) {
+				t.Errorf("OK=%v, want the error %q in:\n%s", r.OK(), c.want, strings.Join(lines(r), "\n"))
+			}
+			if len(r.ReportHTML) == 0 {
+				t.Error("no report was rendered")
+			}
+		})
+	}
+}
+
+func hasLine(ls []string, want string) bool {
+	for _, l := range ls {
+		if l == want {
+			return true
+		}
+	}
+	return false
 }

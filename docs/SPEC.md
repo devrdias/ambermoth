@@ -420,7 +420,10 @@ before the segment are included in `ledger/context.jsonl`. Each is internally
 consistent, but the pack cannot prove where it sat in the chain, so the summary
 labels them "before the segment · self-attested".
 
-A pack is at most 1 GiB uncompressed; larger archives are refused.
+A pack is at most 1 GiB uncompressed; larger archives are refused. A line of
+`ledger/segment.jsonl`, `ledger/context.jsonl` or `ledger/genesis.json` is at
+most 16 MiB; a longer one is a failed check that names the file and the line,
+not a command error.
 
 ### 9.4 Contents map (product spec Appendix A)
 

@@ -120,7 +120,7 @@ func TestVerifyPackExitsWithFailureAndNamesTheError(t *testing.T) {
 	}
 }
 
-func TestVerifyPackFailsOnASegmentLineTooLongToRead(t *testing.T) {
+func TestVerifyPackReportsASegmentLineTooLongToRead(t *testing.T) {
 	t.Parallel()
 	h := recordedHarness(t)
 	good, bad := h.workFile("good.zip"), h.workFile("bad.zip")
@@ -128,5 +128,6 @@ func TestVerifyPackFailsOnASegmentLineTooLongToRead(t *testing.T) {
 	rewritePack(t, good, bad, func(files map[string][]byte, _ *pack.Manifest) {
 		files["ledger/segment.jsonl"] = bytes.Repeat([]byte("a"), 17<<20)
 	})
-	h.check(t, runCase{args: []string{"verify-pack", bad}, wantCode: cli.ExitFail, wantErr: "error: bufio.Scanner: token too long"})
+	h.check(t, runCase{args: []string{"verify-pack", bad}, wantCode: cli.ExitFail,
+		wantOut: "  ERROR: ledger/segment.jsonl: line 1 is longer than 16 MiB"})
 }

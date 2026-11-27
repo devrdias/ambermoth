@@ -369,6 +369,10 @@ func (s *Store) writeSync(data []byte) error {
 	return f.Close()
 }
 
+// MaxLineBytes is the longest ledger line Read accepts. Entries are far
+// smaller; the limit keeps a hostile file from filling memory.
+const MaxLineBytes = 16 << 20
+
 // ReadFile parses every line of a ledger file. It returns raw lines alongside
 // parsed entries so the verifier can check canonical form.
 func ReadFile(path string) ([]Entry, [][]byte, error) {
@@ -384,10 +388,12 @@ func ReadFile(path string) ([]Entry, [][]byte, error) {
 // with the raw line kept, so Verify can report them.
 func Read(r io.Reader) ([]Entry, [][]byte, error) {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	sc.Buffer(make([]byte, 1024*1024), MaxLineBytes)
 	var entries []Entry
 	var lines [][]byte
+	n := 0
 	for sc.Scan() {
+		n++
 		raw := append([]byte(nil), sc.Bytes()...)
 		if len(bytes.TrimSpace(raw)) == 0 {
 			continue
@@ -400,6 +406,9 @@ func Read(r io.Reader) ([]Entry, [][]byte, error) {
 			continue
 		}
 		entries = append(entries, Entry(m))
+	}
+	if errors.Is(sc.Err(), bufio.ErrTooLong) {
+		return entries, lines, fmt.Errorf("line %d is longer than %d MiB", n+1, MaxLineBytes>>20)
 	}
 	return entries, lines, sc.Err()
 }

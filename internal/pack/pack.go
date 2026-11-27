@@ -630,9 +630,7 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 	c.checkFiles()
 	c.checkRequired()
 	c.checkGenesis()
-	if err := c.checkSegment(); err != nil {
-		return nil, err
-	}
+	c.checkSegment()
 	c.checkAnchoringClaims()
 	c.checkContext()
 	c.checkDisclosures()
@@ -723,6 +721,10 @@ func (c *packCheck) checkRequired() {
 // checkGenesis checks genesis.json is a valid genesis entry of the manifest's ledger.
 func (c *packCheck) checkGenesis() {
 	c.genesis = bytes.TrimSpace(c.files["ledger/genesis.json"])
+	if len(c.genesis) > ledger.MaxLineBytes {
+		c.errf("ledger/genesis.json: line 1 is longer than %d MiB", ledger.MaxLineBytes>>20)
+		return
+	}
 	gv, err := canon.Parse(c.genesis)
 	gm, ok := gv.(map[string]any)
 	if err != nil || !ok {
@@ -741,10 +743,11 @@ func (c *packCheck) checkGenesis() {
 
 // checkSegment verifies the segment's chain and anchors and that its ends
 // match the manifest.
-func (c *packCheck) checkSegment() error {
+func (c *packCheck) checkSegment() {
 	seg, lines, err := ledger.Read(bytes.NewReader(c.files["ledger/segment.jsonl"]))
 	if err != nil {
-		return err
+		// what was read before the bad line still goes through the checks
+		c.errf("ledger/segment.jsonl: %v", err)
 	}
 	c.seg = seg
 	c.r.Ledger = ledger.Verify(seg, lines, ledger.VerifyOptions{
@@ -752,11 +755,10 @@ func (c *packCheck) checkSegment() error {
 		CheckAnchor: ops.AnchorVerifier(c.o.Roots, c.o.AllowUnpinned),
 	})
 	if len(seg) == 0 || seg[0] == nil {
-		return nil
+		return
 	}
 	c.checkSegmentStart(seg[0], lines[0])
 	c.checkSegmentEnd(seg[len(seg)-1])
-	return nil
 }
 
 func (c *packCheck) checkSegmentStart(first ledger.Entry, line []byte) {
