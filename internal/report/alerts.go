@@ -63,59 +63,105 @@ func median(xs []int64) float64 {
 // Alerts evaluates the window ending at now.
 func Alerts(entries []ledger.Entry, now time.Time, c AlertConfig) []Alert {
 	c.defaults()
-	day := func(t time.Time) string { return t.UTC().Format("2006-01-02") }
+	sc := scanCalls(entries, now, c)
+	out := sc.newKeys
+	out = append(out, volumeAlerts(sc.daily, now, c)...)
+	out = append(out, concentrationAlerts(sc.winEndpoint, sc.winTotal, c)...)
+	sort.Slice(out, func(i, j int) bool { return alertLess(out[i], out[j]) })
+	return out
+}
+
+func alertDay(t time.Time) string { return t.UTC().Format("2006-01-02") }
+
+type keyPurpose struct{ key, purpose string }
+
+// callScan is what one pass over the ledger collects for the alert rules.
+type callScan struct {
+	newKeys     []Alert
+	daily       map[keyPurpose]map[string]int64 // calls per key and effective purpose, by day
+	winEndpoint map[string]map[string]int64     // calls in the window per key, by endpoint / purpose
+	winTotal    map[string]int64                // calls in the window per key
+}
+
+func scanCalls(entries []ledger.Entry, now time.Time, c AlertConfig) *callScan {
 	winStart := now.AddDate(0, 0, -c.WindowDays)
 	eff := EffectivePurposes(entries)
-
-	type kp struct{ key, purpose string }
-	daily := map[kp]map[string]int64{}
-	winEndpoint := map[string]map[string]int64{}
-	winTotal := map[string]int64{}
-	var out []Alert
+	sc := &callScan{daily: map[keyPurpose]map[string]int64{},
+		winEndpoint: map[string]map[string]int64{}, winTotal: map[string]int64{}}
 	for _, e := range entries {
 		if e == nil {
 			continue
 		}
 		t := e.Time()
-		if e.Type() == ledger.TypeKeyEvent && e.Str("action") == "auto_enroll" && t.After(winStart) {
-			out = append(out, Alert{Kind: "new_key", KeyFP: e.Str("key_fp"),
-				Message: fmt.Sprintf("Key %s (%s) was first seen on %s. Review: is this key expected? If it may be leaked, rotate it and record the rotation.", ledger.ShortFP(e.Str("key_fp")), e.Str("provider"), day(t))})
+		if a, ok := newKeyAlert(e, t, winStart); ok {
+			sc.newKeys = append(sc.newKeys, a)
 		}
 		if e.Type() != ledger.TypeCall || t.After(now) {
 			continue
 		}
-		k := kp{e.Str("key_fp"), eff[e.Seq()]}
-		if daily[k] == nil {
-			daily[k] = map[string]int64{}
-		}
-		daily[k][day(t)]++
-		if t.After(winStart) {
-			fp := e.Str("key_fp")
-			if winEndpoint[fp] == nil {
-				winEndpoint[fp] = map[string]int64{}
-			}
-			winEndpoint[fp][e.Str("endpoint")+" / "+eff[e.Seq()]]++
-			winTotal[fp]++
-		}
+		sc.addCall(e, t, eff[e.Seq()], winStart)
 	}
+	return sc
+}
+
+func (sc *callScan) addCall(e ledger.Entry, t time.Time, purpose string, winStart time.Time) {
+	fp := e.Str("key_fp")
+	k := keyPurpose{fp, purpose}
+	if sc.daily[k] == nil {
+		sc.daily[k] = map[string]int64{}
+	}
+	sc.daily[k][alertDay(t)]++
+	if !t.After(winStart) {
+		return
+	}
+	if sc.winEndpoint[fp] == nil {
+		sc.winEndpoint[fp] = map[string]int64{}
+	}
+	sc.winEndpoint[fp][e.Str("endpoint")+" / "+purpose]++
+	sc.winTotal[fp]++
+}
+
+func newKeyAlert(e ledger.Entry, t, winStart time.Time) (Alert, bool) {
+	if e.Type() != ledger.TypeKeyEvent || e.Str("action") != "auto_enroll" || !t.After(winStart) {
+		return Alert{}, false
+	}
+	return Alert{Kind: "new_key", KeyFP: e.Str("key_fp"),
+		Message: fmt.Sprintf("Key %s (%s) was first seen on %s. Review: is this key expected? If it may be leaked, rotate it and record the rotation.", ledger.ShortFP(e.Str("key_fp")), e.Str("provider"), alertDay(t))}, true
+}
+
+func volumeAlerts(daily map[keyPurpose]map[string]int64, now time.Time, c AlertConfig) []Alert {
+	var out []Alert
 	for k, days := range daily {
 		for d := 0; d < c.WindowDays; d++ {
-			dt := now.AddDate(0, 0, -d)
-			n := days[day(dt)]
-			if n < c.VolumeMinCalls {
-				continue
-			}
-			var base []int64
-			for b := 1; b <= c.BaselineDays; b++ {
-				base = append(base, days[day(dt.AddDate(0, 0, -b))])
-			}
-			m := median(base)
-			if float64(n) > c.VolumeFactor*m {
-				out = append(out, Alert{Kind: "volume", KeyFP: k.key, Day: day(dt),
-					Message: fmt.Sprintf("Key %s, purpose %q: %d calls on %s vs a %d-day median of %.0f. Review: is this an expected run (e.g. a benchmark)? Tag it so the record explains it.", ledger.ShortFP(k.key), k.purpose, n, day(dt), c.BaselineDays, m)})
+			if a, ok := volumeAlert(k, days, now.AddDate(0, 0, -d), c); ok {
+				out = append(out, a)
 			}
 		}
 	}
+	return out
+}
+
+// volumeAlert checks one day of one key and purpose against the median of the
+// BaselineDays before it. Days with no calls count as zero.
+func volumeAlert(k keyPurpose, days map[string]int64, dt time.Time, c AlertConfig) (Alert, bool) {
+	n := days[alertDay(dt)]
+	if n < c.VolumeMinCalls {
+		return Alert{}, false
+	}
+	var base []int64
+	for b := 1; b <= c.BaselineDays; b++ {
+		base = append(base, days[alertDay(dt.AddDate(0, 0, -b))])
+	}
+	m := median(base)
+	if float64(n) > c.VolumeFactor*m {
+		return Alert{Kind: "volume", KeyFP: k.key, Day: alertDay(dt),
+			Message: fmt.Sprintf("Key %s, purpose %q: %d calls on %s vs a %d-day median of %.0f. Review: is this an expected run (e.g. a benchmark)? Tag it so the record explains it.", ledger.ShortFP(k.key), k.purpose, n, alertDay(dt), c.BaselineDays, m)}, true
+	}
+	return Alert{}, false
+}
+
+func concentrationAlerts(winEndpoint map[string]map[string]int64, winTotal map[string]int64, c AlertConfig) []Alert {
+	var out []Alert
 	for fp, m := range winEndpoint {
 		if winTotal[fp] < c.ConcentrationMin {
 			continue
@@ -128,14 +174,16 @@ func Alerts(entries []ledger.Entry, now time.Time, c AlertConfig) []Alert {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		if out[i].Day != out[j].Day {
-			return out[i].Day > out[j].Day
-		}
-		return out[i].Message < out[j].Message
-	})
 	return out
+}
+
+// alertLess orders by kind, then newest day first, then message.
+func alertLess(a, b Alert) bool {
+	if a.Kind != b.Kind {
+		return a.Kind < b.Kind
+	}
+	if a.Day != b.Day {
+		return a.Day > b.Day
+	}
+	return a.Message < b.Message
 }
