@@ -132,7 +132,8 @@ change before v1.0. See the [roadmap](ROADMAP.md).
 ## Contributing
 
 Read [CONTRIBUTING](CONTRIBUTING.md) and [docs/go-rules.md](docs/go-rules.md). The roadmap marks good first
-tasks. Report vulnerabilities privately as described in [SECURITY](SECURITY.md).
+tasks. Benchmarks and how to run them are in [docs/benchmarks.md](docs/benchmarks.md). Report
+vulnerabilities privately as described in [SECURITY](SECURITY.md).
 
 ## License
 

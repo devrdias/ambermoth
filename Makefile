@@ -1,4 +1,4 @@
-.PHONY: build test test-integration check hooks rules crap lint mutate
+.PHONY: build test test-integration check hooks rules crap lint mutate bench bench-1m
 build:
 	go build -o bin/ambermoth ./cmd/ambermoth
 test:
@@ -23,3 +23,10 @@ lint:
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --max-issues-per-linter=0 --max-same-issues=0 ./...
 mutate:
 	go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.5.1 unleash ./internal/...
+# Not part of check or CI. See docs/benchmarks.md.
+bench:
+	go test ./internal/proxy -run '^$$' -bench . -benchmem -count 5
+	go test ./internal/pack -run '^$$' -bench . -benchmem -timeout 2h
+# Needs a lot of memory (about 10 GB) and 3 GB of disk; see docs/benchmarks.md.
+bench-1m:
+	AMBERMOTH_BENCH_1M=1 go test ./internal/pack -run '^$$' -bench '/1M' -benchmem -timeout 4h

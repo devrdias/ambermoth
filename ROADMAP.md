@@ -64,6 +64,7 @@ flowchart LR
 - [x] `make lint` clean, and CI runs it
 - [x] CI runs `make crap`
 - [ ] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
+  - Proxy overhead measured, met. Pack build measured to 500k (125 s); 1M did not fit in 8 GB of RAM, see [docs/benchmarks.md](docs/benchmarks.md).
 - [ ] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
 - [ ] Write-ahead durability mode
 - [ ] External security review of the proxy
