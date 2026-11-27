@@ -278,6 +278,14 @@ false; billing reconciliation (§10) covers the token totals.
 3. Validate the response: status granted, nonce echoed, imprint equals *h*.
 4. Store the DER response as `anchors/<n>-<k>.tsr` and append an `anchor` entry.
 
+A verifier checks each token:
+
+- status is granted or granted with modifications; the imprint is SHA-256 of *h*.
+- the CMS signature over the TSTInfo verifies with the certificate in the token.
+- the SignerInfo has signed attributes (RFC 5652 §5.3), and their messageDigest and content-type match the TSTInfo.
+- a signing-certificate attribute (ESSCertID or ESSCertIDv2) is present, and its hash, and issuerSerial if given, match the certificate that verified the signature.
+- with pinned roots, the signer certificate chains to a root at `genTime` and carries the timeStamping extended key usage; a certificate with no extended key usage fails.
+
 Multiple independent TSAs SHOULD be used. `ambermoth init` configures two:
 `https://freetsa.org/tsr` and `http://timestamp.digicert.com`. Each anchor run
 requests a token from every configured TSA; a TSA that fails does not prevent

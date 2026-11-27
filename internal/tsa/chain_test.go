@@ -1,6 +1,7 @@
 package tsa_test
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"strings"
@@ -12,11 +13,17 @@ import (
 )
 
 // withSigner swaps the signer certificate in the token for one with the same
-// key and names but the given validity and key usage. The signature still holds.
+// key and names but the given validity and key usage. The signing-certificate
+// attribute is rewritten for it and the token signed again, so it still verifies.
 func (f *fixture) withSigner(t *testing.T, o tsatest.CertOptions) []byte {
 	t.Helper()
 	der := f.auth.ReissueSigner(t, o)
-	return f.edit(t, func(r *tsatest.Node) { certSet(t, r).Kids = []*tsatest.Node{{Raw: der}} })
+	return f.edit(t, func(r *tsatest.Node) {
+		certSet(t, r).Kids = []*tsatest.Node{{Raw: der}}
+		sum := sha256.Sum256(der)
+		certID(t, r, signingCertV2OID()).Kids[0] = octets(t, sum[:])
+		resign(t, f, r)
+	})
 }
 
 func (f *fixture) genTime(t *testing.T) time.Time {
@@ -50,6 +57,11 @@ func TestVerifyChain(t *testing.T) {
 	wrongUsage := valid
 	wrongUsage.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 
+	noUsage := valid
+	noUsage.ExtKeyUsage = nil
+	anyUsage := valid
+	anyUsage.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+
 	cases := []struct {
 		name  string
 		resp  []byte
@@ -61,6 +73,8 @@ func TestVerifyChain(t *testing.T) {
 		{name: "signer expired at genTime", resp: f.withSigner(t, expired), roots: f.auth.Roots, want: "is after"},
 		{name: "signer not yet valid at genTime", resp: f.withSigner(t, early), roots: f.auth.Roots, want: "is before"},
 		{name: "signer allowed only for server auth", resp: f.withSigner(t, wrongUsage), roots: f.auth.Roots, want: "incompatible key usage"},
+		{name: "signer without an extended key usage", resp: f.withSigner(t, noUsage), roots: f.auth.Roots, want: "no timeStamping extended key usage"},
+		{name: "signer allowed for any usage", resp: f.withSigner(t, anyUsage), roots: f.auth.Roots, want: "no timeStamping extended key usage"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

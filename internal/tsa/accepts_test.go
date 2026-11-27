@@ -57,16 +57,9 @@ func TestVerifyAccepts(t *testing.T) {
 			sd := signedData(t, r)
 			sd.Kids = append(sd.Kids, null(t))
 		})},
-		{name: "no signed attributes, signature over the TSTInfo itself", roots: trusted, build: editor(func(t *testing.T, r *tsatest.Node) {
-			si := signerInfo(t, r)
-			sig := f.auth.Sign(t, tstOctets(t, r).Bytes)
-			si.Kids = []*tsatest.Node{si.Kids[0], si.Kids[siSID], si.Kids[siDigAlg], si.Kids[siSigAlg], octets(t, sig)}
-		})},
-		{name: "no signing-certificate attribute", roots: trusted, build: editor(func(t *testing.T, r *tsatest.Node) {
-			dropAttribute(t, r, signingCertV2OID())
-			resign(t, f, r)
-		})},
-		{name: "signer without an extended key usage", roots: trusted, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, noUsage) }},
+		{name: "signer without an extended key usage when no roots are given", roots: noRoots, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, noUsage) }},
+		// RFC 3161 §2.3 asks for time stamping as the only usage, in a critical
+		// extension. Not required yet: open until tokens of the default TSAs are checked.
 		{name: "signer allowed for server auth and time stamping", roots: trusted, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, twoUsages) }},
 		{name: "expired signer when no roots are given", roots: noRoots, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, expired) }},
 	}

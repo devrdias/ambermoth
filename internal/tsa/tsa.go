@@ -17,6 +17,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -425,7 +426,7 @@ func signerName(c *x509.Certificate) string {
 }
 
 // verifyChain checks that signer chains to roots, for time stamping, at the
-// token's own time.
+// token's own time, and that it names the timeStamping usage.
 func verifyChain(signer *x509.Certificate, certs []*x509.Certificate, roots *x509.CertPool, at time.Time) error {
 	inter := x509.NewCertPool()
 	for _, c := range certs {
@@ -435,6 +436,11 @@ func verifyChain(signer *x509.Certificate, certs []*x509.Certificate, roots *x50
 		CurrentTime: at, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageTimeStamping}})
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUntrustedChain, err)
+	}
+	// Go lets a certificate with no extended key usage pass for any purpose;
+	// RFC 3161 §2.3 wants time stamping named.
+	if !slices.Contains(signer.ExtKeyUsage, x509.ExtKeyUsageTimeStamping) {
+		return fmt.Errorf("%w: signer has no timeStamping extended key usage", ErrUntrustedChain)
 	}
 	return nil
 }
@@ -514,14 +520,23 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 	if err != nil {
 		return nil, err
 	}
-	signed, err := signedBytes(sp.attrs, h, content)
-	if err != nil {
+	if err := verifySignature(signer, sp, h, content); err != nil {
 		return nil, err
 	}
-	if err := signer.CheckSignature(sp.alg, signed, sp.sig); err != nil {
-		return nil, fmt.Errorf("TSA signature invalid: %w", err)
-	}
 	return signer, nil
+}
+
+// verifySignature checks the signed attributes and the signature over them,
+// then that the signing-certificate attribute names the certificate that verified.
+func verifySignature(signer *x509.Certificate, sp signatureParts, h crypto.Hash, content []byte) error {
+	signed, err := signedBytes(sp.attrs, h, content)
+	if err != nil {
+		return err
+	}
+	if err := signer.CheckSignature(sp.alg, signed, sp.sig); err != nil {
+		return fmt.Errorf("TSA signature invalid: %w", err)
+	}
+	return checkSigningCert(sp.attrs.Bytes, signer)
 }
 
 // findSigner returns the certificate a SignerInfo names.
@@ -593,11 +608,11 @@ func readSignature(f []asn1.RawValue, digest asn1.ObjectIdentifier) (signaturePa
 }
 
 // signedBytes returns what the signature covers: the DER SET of signedAttrs
-// once its messageDigest and content-type check out, or the content itself
-// when there are no signedAttrs.
+// once its messageDigest and content-type check out. signedAttrs must be
+// present because the content type is not id-data (RFC 5652 §5.3).
 func signedBytes(attrs *asn1.RawValue, h crypto.Hash, content []byte) ([]byte, error) {
 	if attrs == nil {
-		return content, nil
+		return nil, errors.New("tsa: token has no signed attributes")
 	}
 	hh := h.New()
 	hh.Write(content)
@@ -629,10 +644,7 @@ func checkSignedAttrs(contents, contentDigest []byte) error {
 // attribute names TSTInfo.
 func readSignedAttrs(attrs []asn1.RawValue) (md []byte, ctOK bool, err error) {
 	for _, a := range attrs {
-		var attr struct {
-			Type   asn1.ObjectIdentifier
-			Values asn1.RawValue `asn1:"set"`
-		}
+		var attr signedAttr
 		if _, err := asn1.Unmarshal(a.FullBytes, &attr); err != nil {
 			return nil, false, err
 		}
