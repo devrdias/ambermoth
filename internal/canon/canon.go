@@ -134,61 +134,89 @@ func write(b *bytes.Buffer, v any) error {
 	case nil:
 		b.WriteString("null")
 	case bool:
-		if t {
-			b.WriteString("true")
-		} else {
-			b.WriteString("false")
-		}
+		writeBool(b, t)
 	case string:
 		return writeString(b, t)
 	case json.Number:
-		s := string(t)
-		if !intRe.MatchString(s) || s == "-0" {
-			return fmt.Errorf("non-integer or non-canonical number %q", s)
-		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || n > maxSafeInt || n < -maxSafeInt {
-			return fmt.Errorf("number out of range %q", s)
-		}
-		b.WriteString(s)
+		return writeNumber(b, string(t))
 	case int:
-		return write(b, json.Number(strconv.FormatInt(int64(t), 10)))
+		return writeInt(b, int64(t))
 	case int64:
-		return write(b, json.Number(strconv.FormatInt(t, 10)))
+		return writeInt(b, t)
 	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool { return utf16Less(keys[i], keys[j]) })
-		b.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			if err := writeString(b, k); err != nil {
-				return err
-			}
-			b.WriteByte(':')
-			if err := write(b, t[k]); err != nil {
-				return err
-			}
-		}
-		b.WriteByte('}')
+		return writeObject(b, t)
 	case []any:
-		b.WriteByte('[')
-		for i, e := range t {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			if err := write(b, e); err != nil {
-				return err
-			}
-		}
-		b.WriteByte(']')
+		return writeArray(b, t)
 	default:
 		return fmt.Errorf("unsupported type %T", v)
 	}
+	return nil
+}
+
+func writeBool(b *bytes.Buffer, v bool) {
+	if v {
+		b.WriteString("true")
+		return
+	}
+	b.WriteString("false")
+}
+
+// writeNumber takes the text of an integer; the range and error text are the
+// ones json.Number input gets.
+func writeNumber(b *bytes.Buffer, s string) error {
+	if !intRe.MatchString(s) || s == "-0" {
+		return fmt.Errorf("non-integer or non-canonical number %q", s)
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n > maxSafeInt || n < -maxSafeInt {
+		return fmt.Errorf("number out of range %q", s)
+	}
+	b.WriteString(s)
+	return nil
+}
+
+func writeInt(b *bytes.Buffer, n int64) error {
+	return writeNumber(b, strconv.FormatInt(n, 10))
+}
+
+func writeObject(b *bytes.Buffer, m map[string]any) error {
+	b.WriteByte('{')
+	for i, k := range sortedKeys(m) {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if err := writeString(b, k); err != nil {
+			return err
+		}
+		b.WriteByte(':')
+		if err := write(b, m[k]); err != nil {
+			return err
+		}
+	}
+	b.WriteByte('}')
+	return nil
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return utf16Less(keys[i], keys[j]) })
+	return keys
+}
+
+func writeArray(b *bytes.Buffer, a []any) error {
+	b.WriteByte('[')
+	for i, e := range a {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if err := write(b, e); err != nil {
+			return err
+		}
+	}
+	b.WriteByte(']')
 	return nil
 }
 
@@ -198,31 +226,42 @@ func writeString(b *bytes.Buffer, s string) error {
 	}
 	b.WriteByte('"')
 	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\b':
-			b.WriteString(`\b`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\r':
-			b.WriteString(`\r`)
-		case '\t':
-			b.WriteString(`\t`)
-		default:
-			if r < 0x20 {
-				fmt.Fprintf(b, `\u%04x`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
+		writeRune(b, r)
 	}
 	b.WriteByte('"')
 	return nil
+}
+
+func writeRune(b *bytes.Buffer, r rune) {
+	if esc, ok := shortEscape(r); ok {
+		b.WriteString(esc)
+		return
+	}
+	if r < 0x20 {
+		fmt.Fprintf(b, `\u%04x`, r)
+		return
+	}
+	b.WriteRune(r)
+}
+
+func shortEscape(r rune) (string, bool) {
+	switch r {
+	case '"':
+		return `\"`, true
+	case '\\':
+		return `\\`, true
+	case '\b':
+		return `\b`, true
+	case '\f':
+		return `\f`, true
+	case '\n':
+		return `\n`, true
+	case '\r':
+		return `\r`, true
+	case '\t':
+		return `\t`, true
+	}
+	return "", false
 }
 
 func utf16Less(a, b string) bool {
