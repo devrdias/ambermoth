@@ -141,8 +141,10 @@ func retag(eff map[int64]string, am ledger.Entry) {
 	if np == "" {
 		return
 	}
-	for s := am.Int("target_from"); s <= am.Int("target_to") && s < am.Seq(); s++ {
-		if _, ok := eff[s]; ok {
+	from, to := am.Int("target_from"), am.Int("target_to")
+	// Walk the calls, not the range: a hostile pack can name 0..MaxInt64.
+	for s := range eff {
+		if s >= from && s <= to && s < am.Seq() {
 			eff[s] = np
 		}
 	}
@@ -260,8 +262,9 @@ func (z *summarizer) collectAmendments(entries []ledger.Entry) {
 }
 
 func (z *summarizer) targetsMatchedCall(am ledger.Entry) bool {
-	for q := am.Int("target_from"); q <= am.Int("target_to"); q++ {
-		if z.inRange[q] {
+	from, to := am.Int("target_from"), am.Int("target_to")
+	for q := range z.inRange {
+		if q >= from && q <= to {
 			return true
 		}
 	}
