@@ -27,6 +27,15 @@ jobs:
         with: { go-version: stable }
       - run: make lint
 
+  # Runs the integration-tagged tests, which need openssl (on ubuntu-latest).
+  crap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.22' }
+      - run: make crap
+
   architecture:
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +64,7 @@ jobs:
   # GoReleaser builds the binaries, writes the notes and publishes the GitHub
   # release. Nothing is committed to the repository. No Node involved.
   release:
-    needs: [test, lint, architecture, release-check]
+    needs: [test, lint, crap, architecture, release-check]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency: { group: release, cancel-in-progress: false }
