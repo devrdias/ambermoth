@@ -291,6 +291,26 @@ closes: `status` 101, `endpoint` `realtime`, `transport` `websocket`,
 parsed in v0.1, so `tokens_in`/`tokens_out` are 0 and `usage_reported` is
 false; billing reconciliation (§10) covers the token totals.
 
+### 6.6 Config checks
+
+`config.json` is checked when it loads, by every command that reads it. A
+config that fails a check does not load, and `ambermoth proxy` refuses to
+start; nothing is checked while a request is being served. Each error names
+the field and the value. Keys the config does not know are ignored, so an old
+file keeps loading.
+
+| Field | Rule |
+|---|---|
+| `listen` | `host:port`, host may be empty, port 1 to 65535 in digits |
+| `upstreams.<name>` | name not empty, without `/`, not `_ambermoth`; `style` is `openai` or `anthropic` |
+| `upstreams.<name>.base_url` | absolute `http` or `https` URL with a host, no query or fragment; trailing `/` is dropped |
+| `tsas[]` | same rule as `base_url` |
+| `anchor_interval` | empty (anchoring off) or a Go duration greater than zero, e.g. `1h`, `90s` |
+| `default_purpose`, `routes[].purpose`, `key_defaults` values | purpose rule of §5 |
+
+The `--listen` flag of `ambermoth proxy` replaces `listen`; the address is
+checked when the socket is opened.
+
 ## 7. Anchoring (RFC 3161)
 
 `ambermoth anchor [--tsa URL]` (or the proxy's `anchor_interval`):

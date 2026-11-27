@@ -86,26 +86,11 @@ func (a *App) cmdProxy(ctx context.Context, args []string) error {
 	if *listen != "" {
 		cfg.Listen = *listen
 	}
-	interval, err := anchorInterval(cfg)
-	if err != nil {
-		return err
-	}
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return err
 	}
-	return a.serveProxy(ctx, s, cfg, ln, loops{anchorEvery: interval})
-}
-
-func anchorInterval(cfg proxy.Config) (time.Duration, error) {
-	if cfg.AnchorInterval == "" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(cfg.AnchorInterval)
-	if err != nil || d <= 0 {
-		return 0, fmt.Errorf("config anchor_interval %q: want a positive duration such as 1h", cfg.AnchorInterval)
-	}
-	return d, nil
+	return a.serveProxy(ctx, s, cfg, ln, loops{anchorEvery: cfg.AnchorEvery()})
 }
 
 // loops are the optional background loops next to the proxy.

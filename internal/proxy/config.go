@@ -3,8 +3,11 @@ package proxy
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -68,35 +71,95 @@ func LoadConfig(path string) (Config, error) {
 	if err := json.Unmarshal(b, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.validate(); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
 	for name, u := range c.Upstreams {
 		u.BaseURL = strings.TrimRight(u.BaseURL, "/")
 		c.Upstreams[name] = u
 	}
-	if err := c.validate(); err != nil {
-		return c, fmt.Errorf("%s: %w", path, err)
-	}
 	return c, nil
 }
+
+// AnchorEvery is the anchor_interval as a duration; 0 means anchoring is off.
+// LoadConfig has already checked the value.
+func (c Config) AnchorEvery() time.Duration {
+	d, _ := time.ParseDuration(c.AnchorInterval)
+	return d
+}
+
+const httpURLWant = "want an absolute http or https URL with a host, without a query or fragment"
 
 // validate checks the values that would otherwise fail later or write nonsense
 // to the ledger. Start-up is the place for that, never a request.
 func (c Config) validate() error {
-	if err := c.checkUpstreams(); err != nil {
-		return err
-	}
-	if c.AnchorInterval != "" {
-		if _, err := time.ParseDuration(c.AnchorInterval); err != nil {
-			return fmt.Errorf("anchor_interval: %w", err)
+	checks := []func() error{c.checkListen, c.checkUpstreams, c.checkTSAs, c.checkAnchor, c.checkPurposes}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
 		}
 	}
-	return c.checkPurposes()
+	return nil
+}
+
+func (c Config) checkListen() error {
+	_, port, err := net.SplitHostPort(c.Listen)
+	if n, perr := strconv.ParseUint(port, 10, 16); err != nil || perr != nil || n == 0 {
+		return fmt.Errorf("listen %q: want host:port with a port from 1 to 65535", c.Listen)
+	}
+	return nil
 }
 
 func (c Config) checkUpstreams() error {
-	for name, u := range c.Upstreams {
-		if u.Style != "openai" && u.Style != "anthropic" {
+	names := make([]string, 0, len(c.Upstreams))
+	for name := range c.Upstreams {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		field := fmt.Sprintf("upstreams[%q]", name)
+		u := c.Upstreams[name]
+		switch {
+		case name == "" || strings.Contains(name, "/") || name == "_ambermoth":
+			return fmt.Errorf(`%s: name must not be empty, contain "/" or be "_ambermoth"`, field)
+		case u.Style != "openai" && u.Style != "anthropic":
 			return fmt.Errorf("upstream %q: style must be openai or anthropic", name)
 		}
+		if err := checkHTTPURL(field+".base_url", u.BaseURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Config) checkTSAs() error {
+	for i, t := range c.TSAs {
+		if err := checkHTTPURL(fmt.Sprintf("tsas[%d]", i), t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkHTTPURL(field, raw string) error {
+	u, err := url.Parse(raw)
+	scheme := ""
+	if err == nil {
+		scheme = strings.ToLower(u.Scheme)
+	}
+	if err != nil || (scheme != "http" && scheme != "https") || u.Host == "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return fmt.Errorf("%s %q: %s", field, raw, httpURLWant)
+	}
+	return nil
+}
+
+// checkAnchor accepts an empty interval, which turns anchoring off.
+func (c Config) checkAnchor() error {
+	if c.AnchorInterval == "" {
+		return nil
+	}
+	if d, err := time.ParseDuration(c.AnchorInterval); err != nil || d <= 0 {
+		return fmt.Errorf("anchor_interval %q: want a positive duration such as 1h, or empty to turn anchoring off", c.AnchorInterval)
 	}
 	return nil
 }
