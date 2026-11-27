@@ -160,30 +160,48 @@ func firstHeader(h http.Header, names ...string) string {
 
 func (p *Proxy) resolvePurpose(c *call) {
 	if c.purpose != "" {
-		if ValidPurpose(c.purpose) {
-			if c.purpose == "other-declared" && c.note == "" {
-				c.note = "other-declared without a note"
-			}
-			return
-		}
+		c.checkHeaderPurpose()
+		return
+	}
+	if purpose, ok := p.routePurpose(c); ok {
+		c.purpose = purpose
+		return
+	}
+	c.purpose = p.defaultPurpose(c.keyFP)
+}
+
+// checkHeaderPurpose keeps a valid header tag and replaces an invalid one with
+// untagged and a note, so a bad header never rejects the call.
+func (c *call) checkHeaderPurpose() {
+	if !ValidPurpose(c.purpose) {
 		c.note = strings.TrimSpace(c.note + " invalid purpose header: " + c.purpose)
 		c.purpose = "untagged"
 		return
 	}
+	if c.purpose == "other-declared" && c.note == "" {
+		c.note = "other-declared without a note"
+	}
+}
+
+// routePurpose returns the purpose of the first route rule that matches the call.
+func (p *Proxy) routePurpose(c *call) (string, bool) {
 	for _, rr := range p.cfg.Routes {
 		if (rr.Upstream == "" || rr.Upstream == c.upstream) && strings.HasPrefix(c.path, rr.Prefix) {
-			c.purpose = rr.Purpose
-			return
+			return rr.Purpose, true
 		}
 	}
-	if d, ok := p.cfg.KeyDefaults[c.keyFP]; ok {
-		c.purpose = d
-		return
+	return "", false
+}
+
+// defaultPurpose is the per-key default, else the config default, else untagged.
+func (p *Proxy) defaultPurpose(keyFP string) string {
+	if d, ok := p.cfg.KeyDefaults[keyFP]; ok {
+		return d
 	}
-	c.purpose = p.cfg.DefaultPurpose
-	if c.purpose == "" {
-		c.purpose = "untagged"
+	if p.cfg.DefaultPurpose == "" {
+		return "untagged"
 	}
+	return p.cfg.DefaultPurpose
 }
 
 func (p *Proxy) maybeEnroll(fp, upstream string) {
