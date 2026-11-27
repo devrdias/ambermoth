@@ -178,6 +178,13 @@ cut, only the value.
 *effective purpose* of a call is its `purpose`, replaced by each later
 amendment that covers it, in ledger order. Packs show both.
 
+`ambermoth amend` checks what it records. `reason` and `by` must not be blank.
+`new_purpose` must be a taxonomy tag, `untagged` or an `x-` tag (§5), and
+`other-declared` needs a non-blank `annotation`, as it needs a note on a call.
+A blank `annotation` is dropped. The range must lie inside the ledger and hold
+at least one `call`. It may also span other entries (anchors, key events,
+earlier amendments): only the calls in it are amended, the rest are ignored.
+
 ### 4.4 `key_event`
 
 `action` ∈ `enroll | rotate | revoke | auto_enroll`, `key_fp`, `provider`,

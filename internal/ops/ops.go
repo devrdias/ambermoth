@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/devrdias/ambermoth/internal/ledger"
+	"github.com/devrdias/ambermoth/internal/proxy"
 	"github.com/devrdias/ambermoth/internal/report"
 	"github.com/devrdias/ambermoth/internal/trust"
 	"github.com/devrdias/ambermoth/internal/tsa"
@@ -136,6 +137,9 @@ func AnchorVerifier(roots *x509.CertPool, allowUnpinned bool) ledger.AnchorVerif
 
 // Amend appends an amendment entry (SPEC §4.3).
 func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by string) (ledger.Entry, error) {
+	if strings.TrimSpace(annotation) == "" {
+		annotation = ""
+	}
 	if err := checkAmendment(newPurpose, annotation, reason, by); err != nil {
 		return nil, err
 	}
@@ -154,13 +158,30 @@ func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by s
 }
 
 func checkAmendment(newPurpose, annotation, reason, by string) error {
-	if reason == "" || by == "" {
+	if strings.TrimSpace(reason) == "" || strings.TrimSpace(by) == "" {
 		return errors.New("--reason and --by are required: amendments must say why and who")
 	}
 	if newPurpose == "" && annotation == "" {
 		return errors.New("give --purpose and/or --annotation")
 	}
+	if newPurpose == "" {
+		return nil
+	}
+	if err := CheckPurpose(newPurpose); err != nil {
+		return err
+	}
+	if newPurpose == "other-declared" && annotation == "" {
+		return errors.New("purpose other-declared needs an annotation that says what it is (docs/SPEC.md §5)")
+	}
 	return nil
+}
+
+// CheckPurpose refuses a purpose that is not in the taxonomy or an x- tag.
+func CheckPurpose(p string) error {
+	if proxy.ValidPurpose(p) {
+		return nil
+	}
+	return fmt.Errorf("invalid purpose %q (taxonomy: %s, or x-custom)", p, strings.Join(proxy.Taxonomy(), ", "))
 }
 
 // checkAmendTarget refuses a range outside the ledger or without any call in it.

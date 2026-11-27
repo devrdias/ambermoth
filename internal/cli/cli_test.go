@@ -108,6 +108,8 @@ func TestLedgerCommands(t *testing.T) {
 		{name: "reports usage", args: []string{"report", "--from", "2026-03-01", "--to", "2026-03-31"}, wantCode: cli.ExitOK, wantOut: "2 key(s)"},
 		{name: "lists alerts", args: []string{"alerts"}, wantCode: cli.ExitOK},
 		{name: "lists alerts as JSON", args: []string{"alerts", "--json"}, wantCode: cli.ExitOK},
+		{name: "refuses other-declared without an annotation", args: []string{"amend", "--seq", "1", "--purpose", "other-declared", "--reason", "setup", "--by", "rafa"}, wantCode: cli.ExitFail, wantErr: "other-declared needs an annotation"},
+		{name: "refuses a blank reason", args: []string{"amend", "--seq", "1", "--annotation", "n", "--reason", " ", "--by", "rafa"}, wantCode: cli.ExitFail, wantErr: "--reason and --by are required"},
 		{name: "amends only call entries", args: []string{"amend", "--seq", "1", "--annotation", "test key", "--reason", "setup", "--by", "rafa"}, wantCode: cli.ExitFail, wantErr: "no call entries in range 1..1"},
 		{name: "refuses an empty pack", args: []string{"pack", "--from", "2026-03-01", "--to", "2026-03-31", "--no-tsa", "--out", filepath.Join(filepath.Dir(h.dir), "p.zip")}, wantCode: cli.ExitFail, wantErr: "no calls in the selected period"},
 	}

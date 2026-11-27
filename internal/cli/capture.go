@@ -267,8 +267,10 @@ func (a *App) cmdAmend(_ context.Context, args []string) error {
 	if *seq > 0 {
 		*from, *to = *seq, *seq
 	}
-	if *purpose != "" && !proxy.ValidPurpose(*purpose) {
-		return fmt.Errorf("invalid purpose %q (taxonomy: %s, or x-custom)", *purpose, strings.Join(proxy.Taxonomy(), ", "))
+	if *purpose != "" {
+		if err := ops.CheckPurpose(*purpose); err != nil {
+			return err
+		}
 	}
 	s, _, err := a.open(*dir)
 	if err != nil {
