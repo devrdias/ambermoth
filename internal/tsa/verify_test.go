@@ -225,6 +225,13 @@ func TestVerifyRejectsBadSignedAttributes(t *testing.T) {
 		{name: "content-type missing", build: editor(func(t *testing.T, r *tsatest.Node) {
 			dropAttribute(t, r, contentTypeOID())
 		}), want: "CMS content-type attribute is not TSTInfo"},
+		{name: "no signed attributes, signature over the TSTInfo itself", build: func(t *testing.T, f *fixture) []byte {
+			return f.edit(t, func(r *tsatest.Node) {
+				si := signerInfo(t, r)
+				sig := f.auth.Sign(t, tstOctets(t, r).Bytes)
+				si.Kids = []*tsatest.Node{si.Kids[0], si.Kids[siSID], si.Kids[siDigAlg], si.Kids[siSigAlg], octets(t, sig)}
+			})
+		}, want: "tsa: token has no signed attributes"},
 	}
 	runRejectCases(t, f, cases)
 }

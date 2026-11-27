@@ -593,11 +593,11 @@ func readSignature(f []asn1.RawValue, digest asn1.ObjectIdentifier) (signaturePa
 }
 
 // signedBytes returns what the signature covers: the DER SET of signedAttrs
-// once its messageDigest and content-type check out, or the content itself
-// when there are no signedAttrs.
+// once its messageDigest and content-type check out. signedAttrs must be
+// present because the content type is not id-data (RFC 5652 §5.3).
 func signedBytes(attrs *asn1.RawValue, h crypto.Hash, content []byte) ([]byte, error) {
 	if attrs == nil {
-		return content, nil
+		return nil, errors.New("tsa: token has no signed attributes")
 	}
 	hh := h.New()
 	hh.Write(content)

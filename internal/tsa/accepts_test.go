@@ -57,11 +57,6 @@ func TestVerifyAccepts(t *testing.T) {
 			sd := signedData(t, r)
 			sd.Kids = append(sd.Kids, null(t))
 		})},
-		{name: "no signed attributes, signature over the TSTInfo itself", roots: trusted, build: editor(func(t *testing.T, r *tsatest.Node) {
-			si := signerInfo(t, r)
-			sig := f.auth.Sign(t, tstOctets(t, r).Bytes)
-			si.Kids = []*tsatest.Node{si.Kids[0], si.Kids[siSID], si.Kids[siDigAlg], si.Kids[siSigAlg], octets(t, sig)}
-		})},
 		{name: "no signing-certificate attribute", roots: trusted, build: editor(func(t *testing.T, r *tsatest.Node) {
 			dropAttribute(t, r, signingCertV2OID())
 			resign(t, f, r)
