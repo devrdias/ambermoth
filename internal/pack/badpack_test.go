@@ -68,6 +68,18 @@ func newBarePack(t *testing.T) goodPack {
 	return goodPack{e, o.Out}
 }
 
+// newDisclosedPack is the bare pack with the keys of the call at seq 1 disclosed.
+func newDisclosedPack(t *testing.T) goodPack {
+	t.Helper()
+	e := newEnv(t)
+	e.call(1, "anthropic", "prod")
+	e.call(2, "anthropic", "prod")
+	o := period(e.opts(), 1, 2)
+	o.Disclose = []int64{1}
+	e.build(o)
+	return goodPack{e, o.Out}
+}
+
 // draft is a pack taken apart for editing.
 type draft struct {
 	t     *testing.T

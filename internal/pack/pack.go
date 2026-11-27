@@ -628,12 +628,14 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 		return nil, err
 	}
 	c.checkFiles()
+	c.checkRequired()
 	c.checkGenesis()
 	if err := c.checkSegment(); err != nil {
 		return nil, err
 	}
 	c.checkAnchoringClaims()
 	c.checkContext()
+	c.checkDisclosures()
 	c.checkTotals()
 	c.checkManifestTimestamp()
 	c.addNotes()
@@ -693,6 +695,27 @@ func (c *packCheck) checkFiles() {
 	for n := range c.files {
 		if !listed[n] {
 			c.errf("%s: present in zip but not listed in manifest", n)
+		}
+	}
+}
+
+// alwaysFiles are in every pack whatever its manifest lists.
+//
+//rules:readonly fixed by the pack format (SPEC 9.2)
+var alwaysFiles = []string{"ledger/genesis.json", "ledger/segment.jsonl", "summary.html", "LIMITS.md", "VERIFY.md", "letter-template.md"}
+
+const (
+	contextFile     = "ledger/context.jsonl"
+	disclosuresFile = "disclosures/entry-keys.json"
+)
+
+// checkRequired asks for every file the format puts in all packs. The manifest
+// lists what the sender chose to include, so it cannot say what may be left out.
+// Context and disclosures depend on the manifest's counts and are checked on their own.
+func (c *packCheck) checkRequired() {
+	for _, n := range alwaysFiles {
+		if _, ok := c.files[n]; !ok {
+			c.errf("%s: required by the pack format but missing", n)
 		}
 	}
 }
@@ -801,18 +824,21 @@ func (c *packCheck) anchorCovers(seq int64) bool {
 
 // checkContext checks the context entries are self-consistent and precede the segment.
 func (c *packCheck) checkContext() {
-	cb, ok := c.files["ledger/context.jsonl"]
-	if !ok {
-		return
-	}
+	cb, present := c.files[contextFile]
 	ce, _, err := ledger.Read(bytes.NewReader(cb))
 	if err != nil {
-		c.errf("ledger/context.jsonl: %v", err)
+		c.errf("%s: %v", contextFile, err)
 		return
 	}
 	c.ctxEntries = ce
 	for _, e := range ce {
 		c.checkContextEntry(e)
+	}
+	if len(ce) != c.m.ContextEntries {
+		c.errf("manifest lists %d context entries but %s has %d", c.m.ContextEntries, contextFile, len(ce))
+	}
+	if !present {
+		return
 	}
 	c.r.Notes = append(c.r.Notes, fmt.Sprintf("%d context entries (key history / code links before the segment) are self-consistent; their chain membership is not covered by this segment", len(ce)))
 }
@@ -828,6 +854,45 @@ func (c *packCheck) checkContextEntry(e ledger.Entry) {
 	if e.Seq() >= c.m.Segment.FirstSeq {
 		c.errf("context entry seq %d is not before the segment", e.Seq())
 	}
+}
+
+// checkDisclosures requires the key file exactly when the manifest lists
+// disclosed entries, and a key for each of them and for no others.
+func (c *packCheck) checkDisclosures() {
+	b, present := c.files[disclosuresFile]
+	if !present {
+		if len(c.m.Disclosed) > 0 {
+			c.errf("%s: required by the pack format (the manifest lists %d disclosed entries) but missing", disclosuresFile, len(c.m.Disclosed))
+		}
+		return
+	}
+	var keys map[string]string
+	if err := json.Unmarshal(b, &keys); err != nil {
+		c.errf("%s: %v", disclosuresFile, err)
+		return
+	}
+	want := map[string]bool{}
+	for _, q := range c.m.Disclosed {
+		want[strconv.FormatInt(q, 10)] = true
+	}
+	for _, k := range diffKeys(keys, want) {
+		c.errf("%s: has a key for seq %s, which the manifest does not list as disclosed", disclosuresFile, k)
+	}
+	for _, k := range diffKeys(want, keys) {
+		c.errf("%s: has no key for seq %s, which the manifest lists as disclosed", disclosuresFile, k)
+	}
+}
+
+// diffKeys returns the sorted keys of a that b does not have.
+func diffKeys[A, B any](a map[string]A, b map[string]B) []string {
+	var out []string
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // checkTotals recomputes the usage totals from the segment and compares them
