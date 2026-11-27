@@ -17,6 +17,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -425,7 +426,7 @@ func signerName(c *x509.Certificate) string {
 }
 
 // verifyChain checks that signer chains to roots, for time stamping, at the
-// token's own time.
+// token's own time, and that it names the timeStamping usage.
 func verifyChain(signer *x509.Certificate, certs []*x509.Certificate, roots *x509.CertPool, at time.Time) error {
 	inter := x509.NewCertPool()
 	for _, c := range certs {
@@ -435,6 +436,11 @@ func verifyChain(signer *x509.Certificate, certs []*x509.Certificate, roots *x50
 		CurrentTime: at, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageTimeStamping}})
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUntrustedChain, err)
+	}
+	// Go lets a certificate with no extended key usage pass for any purpose;
+	// RFC 3161 §2.3 wants time stamping named.
+	if !slices.Contains(signer.ExtKeyUsage, x509.ExtKeyUsageTimeStamping) {
+		return fmt.Errorf("%w: signer has no timeStamping extended key usage", ErrUntrustedChain)
 	}
 	return nil
 }

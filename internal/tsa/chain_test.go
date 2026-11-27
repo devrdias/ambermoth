@@ -57,6 +57,11 @@ func TestVerifyChain(t *testing.T) {
 	wrongUsage := valid
 	wrongUsage.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 
+	noUsage := valid
+	noUsage.ExtKeyUsage = nil
+	anyUsage := valid
+	anyUsage.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+
 	cases := []struct {
 		name  string
 		resp  []byte
@@ -68,6 +73,8 @@ func TestVerifyChain(t *testing.T) {
 		{name: "signer expired at genTime", resp: f.withSigner(t, expired), roots: f.auth.Roots, want: "is after"},
 		{name: "signer not yet valid at genTime", resp: f.withSigner(t, early), roots: f.auth.Roots, want: "is before"},
 		{name: "signer allowed only for server auth", resp: f.withSigner(t, wrongUsage), roots: f.auth.Roots, want: "incompatible key usage"},
+		{name: "signer without an extended key usage", resp: f.withSigner(t, noUsage), roots: f.auth.Roots, want: "no timeStamping extended key usage"},
+		{name: "signer allowed for any usage", resp: f.withSigner(t, anyUsage), roots: f.auth.Roots, want: "no timeStamping extended key usage"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

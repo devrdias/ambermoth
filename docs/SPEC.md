@@ -284,6 +284,7 @@ A verifier checks each token:
 - the CMS signature over the TSTInfo verifies with the certificate in the token.
 - the SignerInfo has signed attributes (RFC 5652 §5.3), and their messageDigest and content-type match the TSTInfo.
 - a signing-certificate attribute (ESSCertID or ESSCertIDv2) is present, and its hash, and issuerSerial if given, match the certificate that verified the signature.
+- with pinned roots, the signer certificate chains to a root at `genTime` and carries the timeStamping extended key usage; a certificate with no extended key usage fails.
 
 Multiple independent TSAs SHOULD be used. `ambermoth init` configures two:
 `https://freetsa.org/tsr` and `http://timestamp.digicert.com`. Each anchor run
