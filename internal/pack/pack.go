@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -305,13 +307,21 @@ func addAnchorTokens(files map[string][]byte, dir string, seg []ledger.Entry) er
 			continue
 		}
 		name := e.Str("token_file")
-		b, err := os.ReadFile(dir + "/" + name)
+		if !plainFileName(name) {
+			return fmt.Errorf("anchor entry seq %d: token_file %q is not a plain file name", e.Seq(), name)
+		}
+		b, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return err
 		}
 		files["anchors/"+name] = b
 	}
 	return nil
+}
+
+// plainFileName reports whether name is one file name, with no directory part.
+func plainFileName(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, "/\\\x00")
 }
 
 // addDisclosures adds the per-entry keys of the disclosed calls, which must be
@@ -586,6 +596,9 @@ func ReadPack(path string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	var total int64
 	for _, f := range zr.File {
+		if err := checkEntryName(f, files); err != nil {
+			return nil, err
+		}
 		if f.UncompressedSize64 > maxTotal {
 			return nil, fmt.Errorf("%s: too large", f.Name)
 		}
@@ -604,6 +617,22 @@ func ReadPack(path string) (map[string][]byte, error) {
 		files[f.Name] = b
 	}
 	return files, nil
+}
+
+// checkEntryName refuses the zip entries that could land outside the pack when
+// someone unzips it, or that hide one file behind another: names that are not a
+// plain relative path, repeated names, and anything but a regular file.
+func checkEntryName(f *zip.File, seen map[string][]byte) error {
+	if !fs.ValidPath(f.Name) || strings.Contains(f.Name, `\`) {
+		return fmt.Errorf("zip entry %q: unsafe name (want a relative path with no \"..\" or empty parts and no backslash)", f.Name)
+	}
+	if _, dup := seen[f.Name]; dup {
+		return fmt.Errorf("zip entry %q: appears more than once", f.Name)
+	}
+	if !f.Mode().IsRegular() {
+		return fmt.Errorf("zip entry %q: not a regular file", f.Name)
+	}
+	return nil
 }
 
 // VerifyOptions configures VerifyPack.

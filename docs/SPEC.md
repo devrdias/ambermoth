@@ -420,7 +420,12 @@ before the segment are included in `ledger/context.jsonl`. Each is internally
 consistent, but the pack cannot prove where it sat in the chain, so the summary
 labels them "before the segment · self-attested".
 
-A pack is at most 1 GiB uncompressed; larger archives are refused. A line of
+A pack is at most 1 GiB uncompressed; larger archives are refused, and so is
+one with a zip entry whose name is not a plain relative path (a `..` or empty
+part, a leading `/`, a backslash), a name that appears twice, or an entry that
+is not a regular file (a symlink, say). `ambermoth pack` takes the token of an
+anchor entry only from a `token_file` that is a plain file name, and refuses
+one with a directory part. A line of
 `ledger/segment.jsonl`, `ledger/context.jsonl` or `ledger/genesis.json` is at
 most 16 MiB; a longer one is a failed check that names the file and the line,
 not a command error.
