@@ -14,64 +14,86 @@ import (
 	"github.com/devrdias/ambermoth/internal/report"
 )
 
-func (a *App) cmdPack(ctx context.Context, args []string) error {
+// packArgs is a parsed 'ambermoth pack' command line.
+type packArgs struct {
+	dir, out      string
+	noTSA         bool
+	tsaCAs        multi
+	allowUnpinned bool
+	opts          pack.Options
+}
+
+// parsePackArgs reads and checks the pack flags. Fields of opts that need the
+// ledger (TSAs, Roots) are left for cmdPack to fill in.
+func (a *App) parsePackArgs(args []string) (*packArgs, error) {
 	fs, dir := a.newFlags("pack")
+	pa := &packArgs{}
 	from := fs.String("from", "", "first day, YYYY-MM-DD (required)")
 	to := fs.String("to", "", "last day, YYYY-MM-DD inclusive (required)")
 	provider := fs.String("provider", "", "limit itemised usage to one provider")
 	account := fs.String("account", "", "account / organisation identifier to print on the cover")
 	disclose := fs.String("disclose", "", "comma-separated seqs whose per-entry keys to disclose")
 	out := fs.String("out", "", "output zip (default evidence-pack-<from>-<to>.zip)")
-	noTSA := fs.Bool("no-tsa", false, "do not timestamp the manifest")
-	var cas multi
-	fs.Var(&cas, "tsa-ca", "PEM file of an extra trusted TSA root (repeatable)")
-	allowUnpinned := fs.Bool("allow-unpinned-tsa", false, "accept anchors from TSAs that do not chain to a pinned root")
+	fs.BoolVar(&pa.noTSA, "no-tsa", false, "do not timestamp the manifest")
+	fs.Var(&pa.tsaCAs, "tsa-ca", "PEM file of an extra trusted TSA root (repeatable)")
+	fs.BoolVar(&pa.allowUnpinned, "allow-unpinned-tsa", false, "accept anchors from TSAs that do not chain to a pinned root")
 	if _, err := parse(fs, args); err != nil {
-		return err
+		return nil, err
 	}
 	if *from == "" || *to == "" {
-		return errors.New("--from and --to are required")
+		return nil, errors.New("--from and --to are required")
 	}
 	f, err := parseDay("from", *from)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	t, err := parseDay("to", *to)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	seqs, err := parseSeqs(*disclose)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s, cfg, err := a.open(*dir)
+	pa.dir, pa.out = *dir, *out
+	if pa.out == "" {
+		pa.out = fmt.Sprintf("evidence-pack-%s-%s.zip", *from, *to)
+	}
+	pa.opts = pack.Options{From: f, To: t.AddDate(0, 0, 1), Provider: *provider, Account: *account,
+		Disclose: seqs, AllowUnpinned: pa.allowUnpinned, Out: pa.out, Generator: a.generator()}
+	return pa, nil
+}
+
+func (a *App) cmdPack(ctx context.Context, args []string) error {
+	pa, err := a.parsePackArgs(args)
 	if err != nil {
 		return err
 	}
-	roots, err := ops.TrustPool(cas)
+	s, cfg, err := a.open(pa.dir)
 	if err != nil {
 		return err
 	}
-	if *out == "" {
-		*out = fmt.Sprintf("evidence-pack-%s-%s.zip", *from, *to)
+	if pa.opts.Roots, err = ops.TrustPool(pa.tsaCAs); err != nil {
+		return err
 	}
-	tsas := cfg.TSAs
-	if *noTSA {
-		tsas = nil
+	if !pa.noTSA {
+		pa.opts.TSAs = cfg.TSAs
 	}
-	m, err := pack.Build(ctx, s, pack.Options{From: f, To: t.AddDate(0, 0, 1), Provider: *provider, Account: *account,
-		Disclose: seqs, TSAs: tsas, Roots: roots, AllowUnpinned: *allowUnpinned, Out: *out, Generator: a.generator()})
+	m, err := pack.Build(ctx, s, pa.opts)
 	if err != nil {
 		return err
 	}
-	w := a.env.Stdout
-	_, _ = fmt.Fprintf(w, "Evidence pack written: %s\n", *out)
+	printPackWritten(a.env.Stdout, m, pa.out)
+	return nil
+}
+
+func printPackWritten(w io.Writer, m *pack.Manifest, out string) {
+	_, _ = fmt.Fprintf(w, "Evidence pack written: %s\n", out)
 	_, _ = fmt.Fprintf(w, "  %d calls, %d purposes, segment seq %d…%d (start anchored: %v, end anchored: %v)\n",
 		m.Totals.All.Calls, len(m.Totals.ByPurpose), m.Segment.FirstSeq, m.Segment.LastSeq, m.Segment.StartAnchored, m.Segment.EndAnchored)
 	_, _ = fmt.Fprintln(w, "  Next: write your explanation in letter-template.md (inside the zip). Don't edit summary.html:")
 	_, _ = fmt.Fprintln(w, "        verify-pack re-renders it from the ledger and rejects any change. Then check it yourself:")
-	_, _ = fmt.Fprintf(w, "        ambermoth verify-pack %s --report report.html\n", *out)
-	return nil
+	_, _ = fmt.Fprintf(w, "        ambermoth verify-pack %s --report report.html\n", out)
 }
 
 // parseSeqs parses a comma-separated list of entry sequence numbers.
@@ -113,10 +135,8 @@ func (a *App) cmdVerifyPack(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *reportPath != "" && r.ReportHTML != nil {
-		if err := os.WriteFile(*reportPath, r.ReportHTML, 0o644); err != nil {
-			return err
-		}
+	if err := writeVerifierReport(*reportPath, r.ReportHTML); err != nil {
+		return err
 	}
 	if *asJSON {
 		err = writeJSON(a.env.Stdout, map[string]any{"ok": r.OK(), "errors": r.Errors, "warnings": r.Warnings,
@@ -131,6 +151,15 @@ func (a *App) cmdVerifyPack(_ context.Context, args []string) error {
 		return exitError(ExitFail)
 	}
 	return nil
+}
+
+// writeVerifierReport saves the verifier's HTML report; it does nothing when
+// no path was asked for or the pack produced no report.
+func writeVerifierReport(path string, html []byte) error {
+	if path == "" || html == nil {
+		return nil
+	}
+	return os.WriteFile(path, html, 0o644)
 }
 
 func printPackReport(w io.Writer, r *pack.PackReport, reportPath string) {
