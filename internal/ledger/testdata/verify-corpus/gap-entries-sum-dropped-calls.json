@@ -1,0 +1,63 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 1000010,
+  "entries": 11,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 3,
+      "entry_hash": "sha256:622f27cd52c6367e5ff34b3e105acaac5098092499d1c0cfe8b2cfd5dfb4069c",
+      "prev_hash": "sha256:09107f8b7c325d3dcfb6df8669b79c039c542764a4f9dc212c4a5cb55904205f",
+      "seq": 8,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:08:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "entry_hash": "sha256:5d2bc908520e677369bbc85d1a861bec562dc769a16cced1d87f229ef74f7487",
+      "prev_hash": "sha256:622f27cd52c6367e5ff34b3e105acaac5098092499d1c0cfe8b2cfd5dfb4069c",
+      "seq": 9,
+      "ts": "2026-03-01T00:09:00.000Z",
+      "type": "gap",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 1000000,
+      "entry_hash": "sha256:5ced6744f61814f8d58180d81086dbca840662618d3f3f0a7ce4e39ff7b8f451",
+      "prev_hash": "sha256:5d2bc908520e677369bbc85d1a861bec562dc769a16cced1d87f229ef74f7487",
+      "seq": 10,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:10:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:5ced6744f61814f8d58180d81086dbca840662618d3f3f0a7ce4e39ff7b8f451",
+  "last_anchored_seq": -1,
+  "last_seq": 10,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "starts_at_genesis": true,
+  "unanchored_tail": 11,
+  "warnings": []
+}

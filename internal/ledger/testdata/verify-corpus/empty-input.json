@@ -1,0 +1,20 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 0,
+  "entries": 0,
+  "entries_lagging_over_24h": 0,
+  "errors": [
+    "ledger is empty"
+  ],
+  "first_seq": 0,
+  "gaps": [],
+  "head_hash": "",
+  "last_anchored_seq": -1,
+  "last_seq": 0,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "starts_at_genesis": false,
+  "unanchored_tail": 0,
+  "warnings": []
+}

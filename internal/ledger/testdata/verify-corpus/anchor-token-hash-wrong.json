@@ -1,0 +1,43 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [
+    {
+      "error": "token file hash mismatch",
+      "gen_time": "0001-01-01T00:00:00Z",
+      "ok": false,
+      "pinned": false,
+      "seq": 8,
+      "target_seq": 7,
+      "tsa": "test"
+    }
+  ],
+  "dropped_calls": 7,
+  "entries": 9,
+  "entries_lagging_over_24h": 0,
+  "errors": [
+    "anchor seq 8: token file hash mismatch"
+  ],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:8c62bb17bf3fe00d7e3c301b1045bf2a80e3ca43032713abe9889554238ca03f",
+  "last_anchored_seq": -1,
+  "last_seq": 8,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "starts_at_genesis": true,
+  "unanchored_tail": 8,
+  "warnings": []
+}

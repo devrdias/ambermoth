@@ -1,0 +1,53 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [
+    {
+      "gen_time": "2026-03-01T00:08:00Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 8,
+      "signer": "Test TSA",
+      "target_seq": 5,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-01T00:11:00Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 11,
+      "signer": "Test TSA",
+      "target_seq": 10,
+      "tsa": "test"
+    }
+  ],
+  "dropped_calls": 7,
+  "entries": 13,
+  "entries_lagging_over_24h": 0,
+  "errors": [
+    "seq 0: entry_hash mismatch (entry altered after writing)",
+    "seq 1: prev_hash does not match previous entry_hash (chain broken)"
+  ],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:88e0b661100424e54f27b53afc156f685816f90a4c318065f2f1579a2fba13d4",
+  "last_anchored_seq": 10,
+  "last_seq": 12,
+  "max_anchor_lag_seconds": 480,
+  "max_anchor_lag_seq": 0,
+  "starts_at_genesis": true,
+  "unanchored_tail": 1,
+  "warnings": []
+}
