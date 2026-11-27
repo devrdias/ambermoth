@@ -42,6 +42,8 @@ ambermoth init          # creates .ambermoth/ with a private HMAC key
 ambermoth proxy         # listens on 127.0.0.1:8787
 ```
 
+`init` stops if the directory already has a `ledger.jsonl` or a `secret.key`. To start a new ledger there, move or remove them yourself. A key without its ledger usually means the ledger was moved: put it back.
+
 Point your SDKs at it:
 
 ```sh

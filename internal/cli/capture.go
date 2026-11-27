@@ -38,11 +38,8 @@ func (a *App) cmdInit(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfgPath := filepath.Join(*dir, ledger.ConfigFile)
-	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(cfgPath, proxy.MarshalConfig(proxy.DefaultConfig()), 0o600); err != nil {
-			return fmt.Errorf("writing config: %w", err)
-		}
+	if err := writeDefaultConfig(filepath.Join(*dir, ledger.ConfigFile)); err != nil {
+		return fmt.Errorf("writing config: %w", err)
 	}
 	_, _ = fmt.Fprintf(a.env.Stdout, `Ledger created in %s
   ledger id: %s
@@ -54,6 +51,24 @@ Next:
   export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
 `, *dir, s.LedgerID, *dir)
 	return nil
+}
+
+// writeDefaultConfig creates the config file at path unless one is already
+// there. An existing config holds the user's settings and no secret, so it is
+// kept; the exclusive create keeps it even when another init races this one.
+func writeDefaultConfig(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(proxy.MarshalConfig(proxy.DefaultConfig()))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // cmdProxy runs the recording proxy until ctx is cancelled (SIGINT/SIGTERM in

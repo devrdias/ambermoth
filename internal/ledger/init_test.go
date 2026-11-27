@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,21 +177,124 @@ func TestInitRefusesExistingLedger(t *testing.T) {
 	assertValid(t, s)
 }
 
-// Init only looks for the ledger file. A key left in a directory without a
-// ledger is replaced; this pins the current behaviour.
-func TestInitReplacesKeyWhenNoLedgerExists(t *testing.T) {
+type keepKeyCase struct {
+	name string
+	key  string
+}
+
+// Whatever is in secret.key, a ledger that belongs to it may be somewhere else.
+var keepKeyCases = []keepKeyCase{
+	{"a key left without its ledger", "left over\n"},
+	{"an empty key file", ""},
+	{"a valid key", strings.Repeat("ab", 32) + "\n"},
+	{"a file much larger than a key", strings.Repeat("x", 1<<20)},
+}
+
+func TestInitRefusesExistingKeyWithoutLedger(t *testing.T) {
+	for _, c := range keepKeyCases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(keyPath(dir), []byte(c.key), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			s, err := ledger.Init(dir, "x", fixedClock(epoch))
+			want := "secret.key already exists in " + dir + ": not overwriting it"
+			if err == nil || !strings.Contains(err.Error(), want) || s != nil {
+				t.Fatalf("Init = %v, %v; want an error containing %q", s, err, want)
+			}
+			if !strings.Contains(err.Error(), "remove secret.key yourself") || !strings.Contains(err.Error(), "Restore the ledger.jsonl") {
+				t.Errorf("error does not say what to do: %v", err)
+			}
+			if got := readBytes(t, keyPath(dir)); string(got) != c.key {
+				t.Errorf("key file changed: %d bytes, want %d", len(got), len(c.key))
+			}
+			entries, _ := os.ReadDir(dir)
+			if len(entries) != 1 {
+				t.Errorf("Init left %d files in the directory, want only the key", len(entries))
+			}
+		})
+	}
+}
+
+// After the user removes the key on purpose, init works again.
+func TestInitSucceedsAfterTheKeyIsRemoved(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(keyPath(dir), []byte("left over\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(keyPath(dir)); err != nil {
 		t.Fatal(err)
 	}
 	s, err := ledger.Init(dir, "x", fixedClock(epoch))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := readBytes(t, keyPath(dir)); !bytes.Equal(got, []byte(hex.EncodeToString(s.MasterKey)+"\n")) {
-		t.Errorf("key file not replaced: %q", got)
-	}
 	assertValid(t, s)
+}
+
+// A ledger without its key is refused too, and no key is made for it.
+func TestInitRefusesExistingLedgerWithoutKey(t *testing.T) {
+	s := initStoreAt(t, epoch)
+	before := readBytes(t, s.LedgerPath())
+	if err := os.Remove(keyPath(s.Dir)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ledger.Init(s.Dir, "x", fixedClock(epoch))
+	if err == nil || !strings.Contains(err.Error(), "ledger already exists in "+s.Dir) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, statErr := os.Lstat(keyPath(s.Dir)); statErr == nil {
+		t.Error("a key was created next to an existing ledger")
+	}
+	if !bytes.Equal(readBytes(t, s.LedgerPath()), before) {
+		t.Error("ledger changed")
+	}
+}
+
+// Two init runs on one empty directory: one creates the ledger, the others
+// are refused, and the key that was written belongs to the ledger.
+func TestInitConcurrentCalls(t *testing.T) {
+	const runs = 8
+	dir := t.TempDir()
+	errs := make([]error, runs)
+	stores := make([]*ledger.Store, runs)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < runs; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			stores[i], errs[i] = ledger.Init(dir, "x", fixedClock(epoch))
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	var winner *ledger.Store
+	for i := range errs {
+		if errs[i] == nil {
+			if winner != nil {
+				t.Fatal("more than one Init succeeded")
+			}
+			winner = stores[i]
+			continue
+		}
+		if stores[i] != nil {
+			t.Errorf("run %d returned a store with an error", i)
+		}
+	}
+	if winner == nil {
+		t.Fatalf("no Init succeeded: %v", errs)
+	}
+	assertValid(t, winner)
+	reopened, err := ledger.Open(dir, fixedClock(epoch))
+	if err != nil {
+		t.Fatalf("the directory does not open after the race: %v", err)
+	}
+	if !bytes.Equal(reopened.MasterKey, winner.MasterKey) || reopened.LedgerID != winner.LedgerID {
+		t.Error("the key on disk is not the winner's")
+	}
 }
 
 type initFailCase struct {
@@ -211,6 +315,13 @@ var initFailCases = []initFailCase{
 		dir := t.TempDir()
 		if err := os.Mkdir(keyPath(dir), 0o700); err != nil {
 			t.Fatal(err)
+		}
+		return dir
+	}, true},
+	{"key path is a dangling link", func(t *testing.T) string {
+		dir := t.TempDir()
+		if err := os.Symlink(filepath.Join(dir, "missing", "key"), keyPath(dir)); err != nil {
+			t.Skip("symlinks not available")
 		}
 		return dir
 	}, true},
@@ -235,5 +346,41 @@ func TestInitReturnsWriteErrors(t *testing.T) {
 				t.Error("a ledger file was created")
 			}
 		})
+	}
+}
+
+// A key reached through a link is not written through it.
+func TestInitDoesNotWriteThroughAKeyLink(t *testing.T) {
+	dir, elsewhere := t.TempDir(), filepath.Join(t.TempDir(), "old.key")
+	if err := os.WriteFile(elsewhere, []byte("the old key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, keyPath(dir)); err != nil {
+		t.Skip("symlinks not available")
+	}
+	if _, err := ledger.Init(dir, "x", fixedClock(epoch)); err == nil || !strings.Contains(err.Error(), "secret.key already exists") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := readBytes(t, elsewhere); string(got) != "the old key\n" {
+		t.Errorf("the linked key was changed: %q", got)
+	}
+}
+
+// When the ledger cannot be created, the key made for it is removed again, so
+// a retry is not refused because of a key nothing uses.
+func TestInitRemovesItsKeyWhenTheLedgerCannotBeCreated(t *testing.T) {
+	dir := t.TempDir()
+	link := ledgerPath(dir)
+	if err := os.Symlink(filepath.Join(dir, "missing", "ledger"), link); err != nil {
+		t.Skip("symlinks not available")
+	}
+	if _, err := ledger.Init(dir, "x", fixedClock(epoch)); err == nil || !strings.Contains(err.Error(), "ledger already exists in "+dir) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Lstat(keyPath(dir)); err == nil {
+		t.Error("the key was left behind")
+	}
+	if _, err := os.Readlink(link); err != nil {
+		t.Errorf("the link at the ledger path was touched: %v", err)
 	}
 }

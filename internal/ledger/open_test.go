@@ -261,3 +261,90 @@ func TestOpenReadsLongLastLine(t *testing.T) {
 	assertHead(t, o, 2)
 	assertValid(t, o)
 }
+
+// Valid JSON that is not an object, and what the error calls it.
+type notObjectCase struct {
+	line string
+	kind string
+}
+
+var notObjectCases = []notObjectCase{
+	{"[1]", "array"},
+	{`"x"`, "string"},
+	{"3", "number"},
+	{"null", "null"},
+	{"true", "boolean"},
+}
+
+func replaceLine(b []byte, i int, line string) []byte {
+	lines := bytes.SplitAfter(b, []byte("\n"))
+	lines[i] = []byte(line + "\n")
+	return bytes.Join(lines, nil)
+}
+
+func TestOpenGenesisNotAnObject(t *testing.T) {
+	for _, c := range notObjectCases {
+		t.Run(c.line, func(t *testing.T) {
+			s, orig := threeEntryStore(t)
+			bad := replaceLine(orig, 0, c.line)
+			if err := os.WriteFile(s.LedgerPath(), bad, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			o, err := ledger.Open(s.Dir, fixedClock(epoch))
+			want := "genesis line is not a JSON object (got " + c.kind + ")"
+			if err == nil || err.Error() != want {
+				t.Fatalf("err = %v, want %q", err, want)
+			}
+			if o != nil {
+				t.Error("a store was returned with the error")
+			}
+		})
+	}
+}
+
+func TestOpenLastLineNotAnObject(t *testing.T) {
+	for _, c := range notObjectCases {
+		t.Run(c.line, func(t *testing.T) {
+			s, orig := threeEntryStore(t)
+			bad := replaceLine(orig, 2, c.line)
+			if err := os.WriteFile(s.LedgerPath(), bad, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			o, err := ledger.Open(s.Dir, fixedClock(epoch))
+			want := "last ledger line is not a JSON object (got " + c.kind + ")"
+			if err == nil || err.Error() != want {
+				t.Fatalf("err = %v, want %q", err, want)
+			}
+			if o != nil {
+				t.Error("a store was returned with the error")
+			}
+			if !bytes.Equal(readBytes(t, s.LedgerPath()), bad) {
+				t.Error("Open changed the ledger file")
+			}
+		})
+	}
+}
+
+// Another writer leaves a complete line of the wrong shape after this store
+// was opened: Append and Head return the error and Append writes nothing.
+func TestOpenStoreSeesLastLineNotAnObject(t *testing.T) {
+	for _, c := range notObjectCases {
+		t.Run(c.line, func(t *testing.T) {
+			s, orig := threeEntryStore(t)
+			bad := replaceLine(orig, 2, c.line)
+			if err := os.WriteFile(s.LedgerPath(), bad, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			want := "last ledger line is not a JSON object (got " + c.kind + ")"
+			if err := s.Append(call()); err == nil || err.Error() != want {
+				t.Fatalf("Append err = %v, want %q", err, want)
+			}
+			if _, _, err := s.Head(); err == nil || err.Error() != want {
+				t.Fatalf("Head err = %v, want %q", err, want)
+			}
+			if !bytes.Equal(readBytes(t, s.LedgerPath()), bad) {
+				t.Error("the ledger was written to")
+			}
+		})
+	}
+}

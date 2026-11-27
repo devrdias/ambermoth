@@ -52,6 +52,11 @@ and builds offline from the repository.
   anchors/           RFC 3161 tokens: <seq>-<n>.tsr (DER TimeStampResp)
 ```
 
+`ambermoth init` creates `secret.key` and `ledger.jsonl` only if neither exists.
+It never replaces a key: the key is what every entry HMAC derives from, and a
+ledger kept elsewhere could no longer be disclosed from. An existing
+`config.json` and `anchors/` are kept.
+
 The ledger is a plain file on purpose: it can be inspected with `cat`, copied,
 backed up, and verified without the software that wrote it.
 See [ADR-0002](adr/0002-jsonl-not-sqlite.md).
