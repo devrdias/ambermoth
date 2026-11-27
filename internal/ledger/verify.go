@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/devrdias/ambermoth/internal/canon"
@@ -79,41 +81,100 @@ func (r *Report) warnf(format string, a ...any) {
 
 // Verify runs the SPEC §8 algorithm over parsed entries and raw lines.
 func Verify(entries []Entry, lines [][]byte, opt VerifyOptions) *Report {
-	if opt.TimeTolerance == 0 {
-		opt.TimeTolerance = 5 * time.Second
-	}
-	r := &Report{Entries: len(entries), LastAnchoredSeq: -1, Errors: []string{}, Warnings: []string{}, Anchors: []AnchorResult{},
-		MaxAnchorLagSeconds: -1, MaxAnchorLagSeq: -1}
-	if len(entries) == 0 {
-		r.errf("ledger is empty")
-		return r
-	}
-	v := &verifier{opt: opt, r: r, bySeq: map[int64]Entry{}, prevSeq: -1}
+	v := newVerifier(opt)
 	for i, e := range entries {
-		v.checkEntry(i, e, lines[i])
+		v.add(e, lines[i])
 	}
-	r.AnchorChecksSkip = opt.CheckAnchor == nil
-	for _, e := range entries {
-		if e != nil && e.Type() == TypeAnchor {
-			v.checkAnchor(e)
-		}
-	}
-	for _, ar := range r.Anchors {
-		v.warnClockAhead(ar)
-	}
-	r.computeAnchorLag(entries)
-	r.UnanchoredTail = unanchoredTail(entries, r.LastAnchoredSeq)
-	return r
+	return v.finish()
 }
+
+// VerifyReader runs the SPEC §8 algorithm over the ledger lines of r, one
+// entry at a time. It gives the report Verify gives for the same lines, but
+// keeps a few fields per entry instead of the entry. A read error, or a line
+// over MaxLineBytes, is returned without a report.
+func VerifyReader(r io.Reader, opt VerifyOptions) (*Report, error) {
+	v := newVerifier(opt)
+	if err := scanLines(r, func(line []byte) { v.add(parseEntry(line), line) }); err != nil {
+		return nil, err
+	}
+	return v.finish(), nil
+}
+
+// entryRec is what a run keeps of a checked entry: enough to find an anchor's
+// target and to work out anchor lag.
+type entryRec struct {
+	seq    int64
+	hash   string
+	ts     string
+	anchor bool
+}
+
+func (c entryRec) time() time.Time { return parseTS(c.ts) }
 
 // verifier holds the state of one Verify run.
 type verifier struct {
 	opt      VerifyOptions
 	r        *Report
-	bySeq    map[int64]Entry
+	n        int // lines seen, readable or not
+	recs     []entryRec
+	bySeq    map[int64]int // seq to index in recs; the last entry with a seq wins
+	anchors  []Entry       // anchor entries are few, so they are kept whole
 	prevHash string
 	prevSeq  int64 // -1 after an unreadable line
 	prevTime time.Time
+}
+
+func newVerifier(opt VerifyOptions) *verifier {
+	if opt.TimeTolerance == 0 {
+		opt.TimeTolerance = 5 * time.Second
+	}
+	r := &Report{LastAnchoredSeq: -1, Errors: []string{}, Warnings: []string{}, Anchors: []AnchorResult{},
+		MaxAnchorLagSeconds: -1, MaxAnchorLagSeq: -1}
+	return &verifier{opt: opt, r: r, bySeq: map[int64]int{}, prevSeq: -1}
+}
+
+// add checks the next entry; e is nil for a line that is not a JSON object.
+func (v *verifier) add(e Entry, line []byte) {
+	v.checkEntry(v.n, e, line)
+	v.n++
+}
+
+// finish runs the checks that need the whole ledger and returns the report.
+func (v *verifier) finish() *Report {
+	r := v.r
+	r.Entries = v.n
+	if v.n == 0 {
+		r.errf("ledger is empty")
+		return r
+	}
+	r.AnchorChecksSkip = v.opt.CheckAnchor == nil
+	for _, e := range v.anchors {
+		v.checkAnchor(e)
+	}
+	for _, ar := range r.Anchors {
+		v.warnClockAhead(ar)
+	}
+	r.computeAnchorLag(v.recs)
+	r.UnanchoredTail = unanchoredTail(v.recs, r.LastAnchoredSeq)
+	return r
+}
+
+// keep records e for the checks that run after the last entry.
+func (v *verifier) keep(e Entry) {
+	rec := entryRec{seq: e.Seq(), hash: strings.Clone(e.Hash()), ts: strings.Clone(e.Str("ts")), anchor: e.Type() == TypeAnchor}
+	v.bySeq[rec.seq] = len(v.recs)
+	v.recs = append(v.recs, rec)
+	if rec.anchor {
+		v.anchors = append(v.anchors, e)
+	}
+}
+
+func (v *verifier) lookup(seq int64) (entryRec, bool) {
+	i, ok := v.bySeq[seq]
+	if !ok {
+		return entryRec{}, false
+	}
+	return v.recs[i], true
 }
 
 // checkEntry checks the form, chain link, hash and time of the entry on line i+1.
@@ -140,7 +201,7 @@ func (v *verifier) checkEntry(i int, e Entry, line []byte) {
 		r.Gaps = append(r.Gaps, e)
 		r.DroppedCalls += e.Int("dropped")
 	}
-	v.bySeq[seq] = e
+	v.keep(e)
 	v.prevHash, v.prevSeq = e.Hash(), seq
 	r.LastSeq, r.HeadHash = seq, e.Hash()
 }
@@ -172,11 +233,11 @@ func (v *verifier) checkAnchor(e Entry) {
 }
 
 func (v *verifier) verifyAnchor(e Entry, ar *AnchorResult) error {
-	target, ok := v.bySeq[ar.TargetSeq]
+	target, ok := v.lookup(ar.TargetSeq)
 	if !ok {
 		return fmt.Errorf("target seq %d is outside the verified range", ar.TargetSeq)
 	}
-	if target.Hash() != e.Str("target_hash") {
+	if target.hash != e.Str("target_hash") {
 		return errors.New("target_hash does not match the target entry")
 	}
 	tok, err := v.anchorToken(filepath.Base(e.Str("token_file")))
@@ -190,7 +251,7 @@ func (v *verifier) verifyAnchor(e Entry, ar *AnchorResult) error {
 		ar.OK = true
 		return nil
 	}
-	chk, err := v.opt.CheckAnchor(tok, target.Hash())
+	chk, err := v.opt.CheckAnchor(tok, target.hash)
 	if err != nil {
 		return err
 	}
@@ -212,21 +273,21 @@ func (v *verifier) warnClockAhead(ar AnchorResult) {
 	}
 	limit := ar.GenTime.Add(v.opt.TimeTolerance)
 	for s := ar.TargetSeq; s >= v.r.FirstSeq; s-- {
-		e, ok := v.bySeq[s]
+		rec, ok := v.lookup(s)
 		// earlier entries are older still (checked above for monotonicity)
-		if !ok || !e.Time().After(limit) {
+		if !ok || !rec.time().After(limit) {
 			return
 		}
-		v.r.warnf("seq %d: ts %s is later than the TSA time %s that anchors it (writer clock ahead?)", s, e.Str("ts"), FormatTime(ar.GenTime))
+		v.r.warnf("seq %d: ts %s is later than the TSA time %s that anchors it (writer clock ahead?)", s, rec.ts, FormatTime(ar.GenTime))
 	}
 }
 
 // unanchoredTail counts the entries after the last anchored seq, not
 // counting the anchor entries themselves.
-func unanchoredTail(entries []Entry, lastAnchored int64) int {
+func unanchoredTail(recs []entryRec, lastAnchored int64) int {
 	n := 0
-	for _, e := range entries {
-		if e != nil && e.Seq() > lastAnchored && e.Type() != TypeAnchor {
+	for _, c := range recs {
+		if c.seq > lastAnchored && !c.anchor {
 			n++
 		}
 	}
@@ -237,12 +298,12 @@ func unanchoredTail(entries []Entry, lastAnchored int64) int {
 // anchor at or after it, and records the largest gap between that time and the
 // entry's own timestamp. A record anchored long after its entries only proves
 // they existed from the anchor time on (SPEC §8 step 6).
-func (r *Report) computeAnchorLag(entries []Entry) {
+func (r *Report) computeAnchorLag(recs []entryRec) {
 	as := r.anchorTimes()
 	if len(as) == 0 {
 		return
 	}
-	worst := r.scanLags(entries, as)
+	worst := r.scanLags(recs, as)
 	if worst < 0 {
 		worst = 0
 	}
@@ -290,18 +351,18 @@ func firstCovering(as []anchorTime, from int, seq int64) int {
 // scanLags counts the entries lagging over 24h, records the entry with the
 // largest lag in MaxAnchorLagSeq and returns that lag, or -1 when no entry is
 // anchored. Entries must be in seq order.
-func (r *Report) scanLags(entries []Entry, as []anchorTime) time.Duration {
+func (r *Report) scanLags(recs []entryRec, as []anchorTime) time.Duration {
 	var worst time.Duration = -1
 	k := 0
-	for _, e := range entries {
-		if e == nil || e.Type() == TypeAnchor {
+	for _, c := range recs {
+		if c.anchor {
 			continue
 		}
-		k = firstCovering(as, k, e.Seq())
+		k = firstCovering(as, k, c.seq)
 		if k == len(as) {
 			break // the rest is unanchored
 		}
-		t := e.Time()
+		t := c.time()
 		if t.IsZero() {
 			continue
 		}
@@ -310,7 +371,7 @@ func (r *Report) scanLags(entries []Entry, as []anchorTime) time.Duration {
 			r.EntriesLaggingOver24h++
 		}
 		if lag > worst {
-			worst, r.MaxAnchorLagSeq = lag, e.Seq()
+			worst, r.MaxAnchorLagSeq = lag, c.seq
 		}
 	}
 	return worst

@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/devrdias/ambermoth/internal/cli"
 	"github.com/devrdias/ambermoth/internal/ledger"
+	"github.com/devrdias/ambermoth/internal/ops"
 )
 
 type runCase struct {
@@ -223,4 +225,62 @@ func TestInitConfigFile(t *testing.T) {
 			t.Errorf("config was replaced: %q", b)
 		}
 	})
+}
+
+// verify reads the ledger as a stream. On a damaged file its JSON must be the
+// report that reading the whole file and calling Verify gives.
+func TestVerifyReportMatchesReadingTheWholeFile(t *testing.T) {
+	h := newHarness(t)
+	h.env["TEST_KEY"] = "sk-test"
+	h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+	h.check(t, runCase{args: []string{"key", "enroll", "--provider", "openai", "--key-env", "TEST_KEY"}, wantCode: cli.ExitOK})
+	h.check(t, runCase{args: []string{"key", "enroll", "--provider", "anthropic", "--key-env", "TEST_KEY"}, wantCode: cli.ExitOK})
+	path := filepath.Join(h.dir, ledger.LedgerFile)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = bytes.Replace(b, []byte(`"openai"`), []byte(`"0penai"`), 1)
+	if err := os.WriteFile(path, append(b, []byte("\n[1]\n   \nnot json\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	es, lines, err := ledger.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err := ops.TrustPool(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := ledger.Verify(es, lines, ledger.VerifyOptions{AnchorDir: filepath.Join(h.dir, ledger.AnchorDir), CheckAnchor: ops.AnchorVerifier(roots, false)})
+	if r.OK() {
+		t.Fatal("the damaged ledger verifies")
+	}
+	want, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := h.run("verify", "--json")
+	if code != cli.ExitFail || errOut != "" {
+		t.Fatalf("exit code = %d, stderr %q", code, errOut)
+	}
+	if out != string(want)+"\n" {
+		t.Errorf("verify --json differs from Verify over the whole file\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestVerifyNamesALineThatIsTooLong(t *testing.T) {
+	h := newHarness(t)
+	h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+	f, err := os.OpenFile(filepath.Join(h.dir, ledger.LedgerFile), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(bytes.Repeat([]byte("a"), ledger.MaxLineBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h.check(t, runCase{args: []string{"verify"}, wantCode: cli.ExitFail, wantErr: "error: line 2 is longer than 16 MiB"})
 }

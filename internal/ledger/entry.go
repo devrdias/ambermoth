@@ -63,8 +63,11 @@ func (e Entry) Type() string { return e.Str("type") }
 func (e Entry) Seq() int64   { return e.Int("seq") }
 func (e Entry) Hash() string { return e.Str("entry_hash") }
 
-func (e Entry) Time() time.Time {
-	t, _ := time.Parse(time.RFC3339Nano, e.Str("ts"))
+func (e Entry) Time() time.Time { return parseTS(e.Str("ts")) }
+
+// parseTS parses an entry timestamp; the zero time when it does not parse.
+func parseTS(ts string) time.Time {
+	t, _ := time.Parse(time.RFC3339Nano, ts)
 	return t
 }
 

@@ -398,30 +398,44 @@ func ReadFile(path string) ([]Entry, [][]byte, error) {
 // Read parses ledger lines from r. Parse errors are returned as nil entries
 // with the raw line kept, so Verify can report them.
 func Read(r io.Reader) ([]Entry, [][]byte, error) {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 1024*1024), MaxLineBytes)
 	var entries []Entry
 	var lines [][]byte
+	err := scanLines(r, func(line []byte) {
+		raw := append([]byte(nil), line...)
+		lines = append(lines, raw)
+		entries = append(entries, parseEntry(raw))
+	})
+	return entries, lines, err
+}
+
+// scanLines calls fn for every non-blank line of r. The line is only valid
+// during the call. A line over MaxLineBytes ends the scan with an error
+// naming it.
+func scanLines(r io.Reader, fn func(line []byte)) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 1024*1024), MaxLineBytes)
 	n := 0
 	for sc.Scan() {
 		n++
-		raw := append([]byte(nil), sc.Bytes()...)
-		if len(bytes.TrimSpace(raw)) == 0 {
+		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
 			continue
 		}
-		lines = append(lines, raw)
-		v, err := canon.Parse(raw)
-		m, ok := v.(map[string]any)
-		if err != nil || !ok {
-			entries = append(entries, nil)
-			continue
-		}
-		entries = append(entries, Entry(m))
+		fn(sc.Bytes())
 	}
 	if errors.Is(sc.Err(), bufio.ErrTooLong) {
-		return entries, lines, fmt.Errorf("line %d is longer than %d MiB", n+1, MaxLineBytes>>20)
+		return fmt.Errorf("line %d is longer than %d MiB", n+1, MaxLineBytes>>20)
 	}
-	return entries, lines, sc.Err()
+	return sc.Err()
+}
+
+// parseEntry parses one ledger line; it is nil when the line is not a JSON object.
+func parseEntry(line []byte) Entry {
+	v, err := canon.Parse(line)
+	m, ok := v.(map[string]any)
+	if err != nil || !ok {
+		return nil
+	}
+	return Entry(m)
 }
 
 // Entries reads all entries of the store.

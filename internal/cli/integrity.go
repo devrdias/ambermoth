@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/devrdias/ambermoth/internal/ledger"
@@ -51,11 +52,10 @@ func (a *App) cmdVerify(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	es, lines, err := ledger.ReadFile(path)
+	r, err := verifyFile(path, ledger.VerifyOptions{AnchorDir: adir, CheckAnchor: ops.AnchorVerifier(roots, *allowUnpinned)})
 	if err != nil {
 		return err
 	}
-	r := ledger.Verify(es, lines, ledger.VerifyOptions{AnchorDir: adir, CheckAnchor: ops.AnchorVerifier(roots, *allowUnpinned)})
 	if *asJSON {
 		if err := writeJSON(a.out, r); err != nil {
 			return err
@@ -67,6 +67,16 @@ func (a *App) cmdVerify(_ context.Context, args []string) error {
 		return exitError(ExitFail)
 	}
 	return nil
+}
+
+// verifyFile verifies the ledger at path without loading it.
+func verifyFile(path string, opt ledger.VerifyOptions) (*ledger.Report, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return ledger.VerifyReader(f, opt)
 }
 
 func writeJSON(w io.Writer, v any) error {
