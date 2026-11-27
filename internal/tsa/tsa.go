@@ -89,31 +89,47 @@ func Request(ctx context.Context, url string, digest []byte, client *http.Client
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqDER))
+	body, err := post(ctx, client, url, reqDER)
 	if err != nil {
 		return nil, nil, err
-	}
-	req.Header.Set("Content-Type", "application/timestamp-query")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("TSA %s returned HTTP %d", url, resp.StatusCode)
 	}
 	info, err := Verify(body, digest, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	if info.Nonce == nil || info.Nonce.Cmp(nonce) != 0 {
-		return nil, nil, errors.New("TSA reply nonce does not match request")
+	if err := checkNonce(info, nonce); err != nil {
+		return nil, nil, err
 	}
 	return body, info, nil
+}
+
+// post sends a TimeStampReq and returns the body of an HTTP 200 reply.
+func post(ctx context.Context, client *http.Client, url string, reqDER []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqDER))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/timestamp-query")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("TSA %s returned HTTP %d", url, resp.StatusCode)
+	}
+	return body, nil
+}
+
+func checkNonce(info *TokenInfo, nonce *big.Int) error {
+	if info.Nonce == nil || info.Nonce.Cmp(nonce) != 0 {
+		return errors.New("TSA reply nonce does not match request")
+	}
+	return nil
 }
 
 // TokenInfo is what a verified token asserts.
@@ -215,25 +231,42 @@ func sigAlg(digest, sig asn1.ObjectIdentifier) (x509.SignatureAlgorithm, error) 
 // Verify parses a DER TimeStampResp, checks status, imprint and CMS signature,
 // and — if roots is non-nil — chains the signer to roots for time-stamping.
 func Verify(respDER, expectedDigest []byte, roots *x509.CertPool) (*TokenInfo, error) {
+	token, err := grantedToken(respDER)
+	if err != nil {
+		return nil, err
+	}
+	return verifyToken(token, expectedDigest, roots)
+}
+
+// grantedToken returns the DER ContentInfo of a TimeStampResp whose status
+// is granted or granted with modifications.
+func grantedToken(respDER []byte) ([]byte, error) {
 	top, err := children(respDER)
 	if err != nil || len(top) < 1 {
 		return nil, fmt.Errorf("not a TimeStampResp: %v", err)
 	}
-	status, err := children(top[0].FullBytes)
-	if err != nil || len(status) < 1 {
-		return nil, errors.New("malformed PKIStatusInfo")
-	}
-	var st int
-	if _, err := asn1.Unmarshal(status[0].FullBytes, &st); err != nil {
+	if err := checkStatus(top[0].FullBytes); err != nil {
 		return nil, err
-	}
-	if st != 0 && st != 1 {
-		return nil, fmt.Errorf("TSA refused the request (status %d)", st)
 	}
 	if len(top) < 2 {
 		return nil, errors.New("TimeStampResp has no token")
 	}
-	return verifyToken(top[1].FullBytes, expectedDigest, roots)
+	return top[1].FullBytes, nil
+}
+
+func checkStatus(statusInfoDER []byte) error {
+	status, err := children(statusInfoDER)
+	if err != nil || len(status) < 1 {
+		return errors.New("malformed PKIStatusInfo")
+	}
+	var st int
+	if _, err := asn1.Unmarshal(status[0].FullBytes, &st); err != nil {
+		return err
+	}
+	if st != 0 && st != 1 {
+		return fmt.Errorf("TSA refused the request (status %d)", st)
+	}
+	return nil
 }
 
 func verifyToken(ciDER, expectedDigest []byte, roots *x509.CertPool) (*TokenInfo, error) {
@@ -246,12 +279,9 @@ func verifyToken(ciDER, expectedDigest []byte, roots *x509.CertPool) (*TokenInfo
 	if err != nil {
 		return nil, err
 	}
-	info, imprint, imprintAlg, err := parseTSTInfo(tstDER)
+	info, err := parseImprintedTSTInfo(tstDER, expectedDigest)
 	if err != nil {
 		return nil, err
-	}
-	if !imprintAlg.Equal(oidSHA256) || !bytes.Equal(imprint, expectedDigest) {
-		return nil, errors.New("token's message imprint does not match the anchored hash")
 	}
 	certs, signerInfo, err := certsAndSigner(parts[3:])
 	if err != nil {
@@ -263,14 +293,34 @@ func verifyToken(ciDER, expectedDigest []byte, roots *x509.CertPool) (*TokenInfo
 	}
 	info.SignerCert = signer
 	info.Signer = signerName(signer)
-	if roots == nil {
-		return info, nil
-	}
-	if err := verifyChain(signer, certs, roots, info.GenTime); err != nil {
+	if err := checkChain(info, certs, roots); err != nil {
 		return nil, err
 	}
-	info.ChainVerified = true
 	return info, nil
+}
+
+// parseImprintedTSTInfo parses a TSTInfo and checks that it stamps expectedDigest with SHA-256.
+func parseImprintedTSTInfo(tstDER, expectedDigest []byte) (*TokenInfo, error) {
+	info, imprint, imprintAlg, err := parseTSTInfo(tstDER)
+	if err != nil {
+		return nil, err
+	}
+	if !imprintAlg.Equal(oidSHA256) || !bytes.Equal(imprint, expectedDigest) {
+		return nil, errors.New("token's message imprint does not match the anchored hash")
+	}
+	return info, nil
+}
+
+// checkChain chains the signer to roots and records it, unless roots is nil.
+func checkChain(info *TokenInfo, certs []*x509.Certificate, roots *x509.CertPool) error {
+	if roots == nil {
+		return nil
+	}
+	if err := verifyChain(info.SignerCert, certs, roots, info.GenTime); err != nil {
+		return err
+	}
+	info.ChainVerified = true
+	return nil
 }
 
 // signedDataParts unwraps a CMS ContentInfo holding SignedData and returns
@@ -281,11 +331,15 @@ func signedDataParts(ciDER []byte) ([]asn1.RawValue, error) {
 	if err != nil || len(ci) != 2 {
 		return nil, errors.New("malformed ContentInfo")
 	}
-	var ct asn1.ObjectIdentifier
-	if _, err := asn1.Unmarshal(ci[0].FullBytes, &ct); err != nil || !ct.Equal(oidSignedData) {
+	if !isOID(ci[0], oidSignedData) {
 		return nil, errors.New("token is not CMS SignedData")
 	}
-	sd, err := elements(ci[1].Bytes) // [0] EXPLICIT -> SignedData SEQUENCE
+	return signedDataFields(ci[1])
+}
+
+// signedDataFields reads the SignedData SEQUENCE out of its [0] EXPLICIT wrapper.
+func signedDataFields(wrapper asn1.RawValue) ([]asn1.RawValue, error) {
+	sd, err := elements(wrapper.Bytes)
 	if err != nil || len(sd) != 1 {
 		return nil, errors.New("malformed SignedData wrapper")
 	}
@@ -296,14 +350,20 @@ func signedDataParts(ciDER []byte) ([]asn1.RawValue, error) {
 	return parts, nil
 }
 
+// isOID reports whether rv is the object identifier want.
+func isOID(rv asn1.RawValue, want asn1.ObjectIdentifier) bool {
+	var got asn1.ObjectIdentifier
+	_, err := asn1.Unmarshal(rv.FullBytes, &got)
+	return err == nil && got.Equal(want)
+}
+
 // encapsulatedTSTInfo returns the DER TSTInfo inside an encapContentInfo.
 func encapsulatedTSTInfo(encap asn1.RawValue) ([]byte, error) {
 	eci, err := elements(encap.Bytes)
 	if err != nil || len(eci) != 2 {
 		return nil, errors.New("missing encapsulated TSTInfo")
 	}
-	var ect asn1.ObjectIdentifier
-	if _, err := asn1.Unmarshal(eci[0].FullBytes, &ect); err != nil || !ect.Equal(oidTSTInfo) {
+	if !isOID(eci[0], oidTSTInfo) {
 		return nil, errors.New("encapsulated content is not TSTInfo")
 	}
 	var tstDER []byte
@@ -384,30 +444,48 @@ func parseTSTInfo(der []byte) (*TokenInfo, []byte, asn1.ObjectIdentifier, error)
 	if err != nil || len(f) < 5 {
 		return nil, nil, nil, errors.New("malformed TSTInfo")
 	}
-	info := &TokenInfo{}
-	if _, err := asn1.Unmarshal(f[1].FullBytes, &info.Policy); err != nil {
+	info, mi, err := tstCore(f)
+	if err != nil {
 		return nil, nil, nil, err
 	}
+	if info.Nonce, err = tstNonce(f[5:]); err != nil {
+		return nil, nil, nil, err
+	}
+	return info, mi.HashedMessage, mi.HashAlgorithm.Algorithm, nil
+}
+
+// tstCore reads the required TSTInfo fields after version: policy,
+// messageImprint, serialNumber and genTime.
+func tstCore(f []asn1.RawValue) (*TokenInfo, messageImprint, error) {
 	var mi messageImprint
-	if _, err := asn1.Unmarshal(f[2].FullBytes, &mi); err != nil {
-		return nil, nil, nil, err
+	info := &TokenInfo{Serial: new(big.Int)}
+	if _, err := asn1.Unmarshal(f[1].FullBytes, &info.Policy); err != nil {
+		return nil, mi, err
 	}
-	info.Serial = new(big.Int)
+	if _, err := asn1.Unmarshal(f[2].FullBytes, &mi); err != nil {
+		return nil, mi, err
+	}
 	if _, err := asn1.Unmarshal(f[3].FullBytes, &info.Serial); err != nil {
-		return nil, nil, nil, err
+		return nil, mi, err
 	}
 	if _, err := asn1.UnmarshalWithParams(f[4].FullBytes, &info.GenTime, "generalized"); err != nil {
-		return nil, nil, nil, fmt.Errorf("genTime: %w", err)
+		return nil, mi, fmt.Errorf("genTime: %w", err)
 	}
-	for _, e := range f[5:] {
+	return info, mi, nil
+}
+
+// tstNonce returns the last INTEGER among the optional TSTInfo fields, or nil.
+func tstNonce(optional []asn1.RawValue) (*big.Int, error) {
+	var nonce *big.Int
+	for _, e := range optional {
 		if e.Class == asn1.ClassUniversal && e.Tag == asn1.TagInteger {
-			info.Nonce = new(big.Int)
-			if _, err := asn1.Unmarshal(e.FullBytes, &info.Nonce); err != nil {
-				return nil, nil, nil, fmt.Errorf("nonce: %w", err)
+			nonce = new(big.Int)
+			if _, err := asn1.Unmarshal(e.FullBytes, &nonce); err != nil {
+				return nil, fmt.Errorf("nonce: %w", err)
 			}
 		}
 	}
-	return info, mi.HashedMessage, mi.HashAlgorithm.Algorithm, nil
+	return nonce, nil
 }
 
 type issuerAndSerial struct {
@@ -420,27 +498,9 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 	if err != nil || len(f) < 5 {
 		return nil, errors.New("malformed SignerInfo")
 	}
-	// The signer is named by issuer and serial, or by subject key id.
-	var signer *x509.Certificate
-	if f[1].Class == asn1.ClassUniversal {
-		var ias issuerAndSerial
-		if _, err := asn1.Unmarshal(f[1].FullBytes, &ias); err != nil {
-			return nil, err
-		}
-		for _, c := range certs {
-			if bytes.Equal(c.RawIssuer, ias.Issuer.FullBytes) && c.SerialNumber.Cmp(ias.Serial) == 0 {
-				signer = c
-			}
-		}
-	} else { // [0] SubjectKeyIdentifier
-		for _, c := range certs {
-			if bytes.Equal(c.SubjectKeyId, f[1].Bytes) {
-				signer = c
-			}
-		}
-	}
-	if signer == nil {
-		return nil, errors.New("signing certificate not included in token (request certReq=true)")
+	signer, err := findSigner(f[1], certs)
+	if err != nil {
+		return nil, err
 	}
 	var digAlg pkix.AlgorithmIdentifier
 	if _, err := asn1.Unmarshal(f[2].FullBytes, &digAlg); err != nil {
@@ -450,56 +510,119 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 	if err != nil {
 		return nil, err
 	}
-	idx := 3
-	var signedAttrs asn1.RawValue
-	hasAttrs := f[3].Class == asn1.ClassContextSpecific && f[3].Tag == 0
-	if hasAttrs {
-		signedAttrs = f[3]
-		idx = 4
-	}
-	if len(f) < idx+2 {
-		return nil, errors.New("malformed SignerInfo")
-	}
-	var sAlg pkix.AlgorithmIdentifier
-	if _, err := asn1.Unmarshal(f[idx].FullBytes, &sAlg); err != nil {
-		return nil, err
-	}
-	var sig []byte
-	if _, err := asn1.Unmarshal(f[idx+1].FullBytes, &sig); err != nil {
-		return nil, err
-	}
-	alg, err := sigAlg(digAlg.Algorithm, sAlg.Algorithm)
+	sp, err := readSignature(f, digAlg.Algorithm)
 	if err != nil {
 		return nil, err
 	}
-	hh := h.New()
-	hh.Write(content)
-	contentDigest := hh.Sum(nil)
-
-	var signed []byte
-	if hasAttrs {
-		attrs, err := elements(signedAttrs.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		md, ctOK, err := readSignedAttrs(attrs)
-		if err != nil {
-			return nil, err
-		}
-		if !bytes.Equal(md, contentDigest) {
-			return nil, errors.New("CMS messageDigest does not match TSTInfo")
-		}
-		if !ctOK {
-			return nil, errors.New("CMS content-type attribute is not TSTInfo")
-		}
-		signed = append([]byte{0x31}, signedAttrs.FullBytes[1:]...) // [0] IMPLICIT -> SET
-	} else {
-		signed = content
+	signed, err := signedBytes(sp.attrs, h, content)
+	if err != nil {
+		return nil, err
 	}
-	if err := signer.CheckSignature(alg, signed, sig); err != nil {
+	if err := signer.CheckSignature(sp.alg, signed, sp.sig); err != nil {
 		return nil, fmt.Errorf("TSA signature invalid: %w", err)
 	}
 	return signer, nil
+}
+
+// findSigner returns the certificate a SignerInfo names.
+func findSigner(sid asn1.RawValue, certs []*x509.Certificate) (*x509.Certificate, error) {
+	signer, err := matchSigner(sid, certs)
+	if err != nil {
+		return nil, err
+	}
+	if signer == nil {
+		return nil, errors.New("signing certificate not included in token (request certReq=true)")
+	}
+	return signer, nil
+}
+
+// matchSigner looks up the signer by issuer and serial, or by subject key id.
+// The last matching certificate wins; nil means none matched.
+func matchSigner(sid asn1.RawValue, certs []*x509.Certificate) (*x509.Certificate, error) {
+	if sid.Class != asn1.ClassUniversal { // [0] SubjectKeyIdentifier
+		return lastMatch(certs, func(c *x509.Certificate) bool { return bytes.Equal(c.SubjectKeyId, sid.Bytes) }), nil
+	}
+	var ias issuerAndSerial
+	if _, err := asn1.Unmarshal(sid.FullBytes, &ias); err != nil {
+		return nil, err
+	}
+	return lastMatch(certs, func(c *x509.Certificate) bool {
+		return bytes.Equal(c.RawIssuer, ias.Issuer.FullBytes) && c.SerialNumber.Cmp(ias.Serial) == 0
+	}), nil
+}
+
+func lastMatch(certs []*x509.Certificate, match func(*x509.Certificate) bool) *x509.Certificate {
+	var found *x509.Certificate
+	for _, c := range certs {
+		if match(c) {
+			found = c
+		}
+	}
+	return found
+}
+
+// signatureParts is the part of a SignerInfo after the digest algorithm.
+type signatureParts struct {
+	attrs *asn1.RawValue // [0] signedAttrs; nil when the SignerInfo has none
+	alg   x509.SignatureAlgorithm
+	sig   []byte
+}
+
+// readSignature reads the optional signedAttrs, the signature algorithm and
+// the signature from SignerInfo fields f (at least five).
+func readSignature(f []asn1.RawValue, digest asn1.ObjectIdentifier) (signatureParts, error) {
+	var sp signatureParts
+	idx := 3
+	if f[3].Class == asn1.ClassContextSpecific && f[3].Tag == 0 {
+		sp.attrs = &f[3]
+		idx = 4
+	}
+	if len(f) < idx+2 {
+		return sp, errors.New("malformed SignerInfo")
+	}
+	var sAlg pkix.AlgorithmIdentifier
+	if _, err := asn1.Unmarshal(f[idx].FullBytes, &sAlg); err != nil {
+		return sp, err
+	}
+	if _, err := asn1.Unmarshal(f[idx+1].FullBytes, &sp.sig); err != nil {
+		return sp, err
+	}
+	var err error
+	sp.alg, err = sigAlg(digest, sAlg.Algorithm)
+	return sp, err
+}
+
+// signedBytes returns what the signature covers: the DER SET of signedAttrs
+// once its messageDigest and content-type check out, or the content itself
+// when there are no signedAttrs.
+func signedBytes(attrs *asn1.RawValue, h crypto.Hash, content []byte) ([]byte, error) {
+	if attrs == nil {
+		return content, nil
+	}
+	hh := h.New()
+	hh.Write(content)
+	if err := checkSignedAttrs(attrs.Bytes, hh.Sum(nil)); err != nil {
+		return nil, err
+	}
+	return append([]byte{0x31}, attrs.FullBytes[1:]...), nil // [0] IMPLICIT -> SET
+}
+
+func checkSignedAttrs(contents, contentDigest []byte) error {
+	attrs, err := elements(contents)
+	if err != nil {
+		return err
+	}
+	md, ctOK, err := readSignedAttrs(attrs)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(md, contentDigest) {
+		return errors.New("CMS messageDigest does not match TSTInfo")
+	}
+	if !ctOK {
+		return errors.New("CMS content-type attribute is not TSTInfo")
+	}
+	return nil
 }
 
 // readSignedAttrs returns the messageDigest attribute and whether the content-type
