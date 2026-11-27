@@ -3,6 +3,7 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/csv"
@@ -30,34 +31,60 @@ func Anchor(ctx context.Context, s *ledger.Store, tsaURLs []string, client *http
 	if len(tsaURLs) == 0 {
 		return nil, errors.New("no TSA configured")
 	}
-	seq, head, err := s.Head()
-	if err != nil {
-		return nil, err
-	}
-	digest, err := ledger.HashBytes(head)
+	target, err := headTarget(s)
 	if err != nil {
 		return nil, err
 	}
 	var out []ledger.Entry
 	var errs []string
 	for i, u := range tsaURLs {
-		der, info, err := tsa.Request(ctx, u, digest, client)
+		der, info, err := tsa.Request(ctx, u, target.digest, client)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", u, err))
 			continue
 		}
-		name := fmt.Sprintf("%d-%d-%s.tsr", seq, i, hostOf(u))
-		if err := os.WriteFile(filepath.Join(s.Dir, ledger.AnchorDir, name), der, 0o600); err != nil {
-			return out, err
-		}
-		e := ledger.Entry{"type": ledger.TypeAnchor, "kind": "rfc3161", "target_seq": seq, "target_hash": head,
-			"tsa": u, "token_file": name, "token_sha256": ledger.SHA256Bytes(der),
-			"gen_time": ledger.FormatTime(info.GenTime), "tsa_signer": info.Signer}
-		if err := s.Append(e); err != nil {
+		e, err := storeAnchor(s, target, i, u, der, info)
+		if err != nil {
 			return out, err
 		}
 		out = append(out, e)
 	}
+	return anchorOutcome(out, errs)
+}
+
+// anchorTarget is the head entry an anchor run timestamps.
+type anchorTarget struct {
+	seq    int64
+	hash   string
+	digest []byte
+}
+
+func headTarget(s *ledger.Store) (anchorTarget, error) {
+	seq, head, err := s.Head()
+	if err != nil {
+		return anchorTarget{}, err
+	}
+	digest, err := ledger.HashBytes(head)
+	if err != nil {
+		return anchorTarget{}, err
+	}
+	return anchorTarget{seq: seq, hash: head, digest: digest}, nil
+}
+
+// storeAnchor writes the token for TSA number idx and appends its anchor entry.
+func storeAnchor(s *ledger.Store, t anchorTarget, idx int, tsaURL string, der []byte, info *tsa.TokenInfo) (ledger.Entry, error) {
+	name := fmt.Sprintf("%d-%d-%s.tsr", t.seq, idx, hostOf(tsaURL))
+	if err := os.WriteFile(filepath.Join(s.Dir, ledger.AnchorDir, name), der, 0o600); err != nil {
+		return nil, err
+	}
+	e := ledger.Entry{"type": ledger.TypeAnchor, "kind": "rfc3161", "target_seq": t.seq, "target_hash": t.hash,
+		"tsa": tsaURL, "token_file": name, "token_sha256": ledger.SHA256Bytes(der),
+		"gen_time": ledger.FormatTime(info.GenTime), "tsa_signer": info.Signer}
+	return e, s.Append(e)
+}
+
+// anchorOutcome turns the anchors made and the TSA failures into Anchor's result.
+func anchorOutcome(out []ledger.Entry, errs []string) ([]ledger.Entry, error) {
 	if len(out) == 0 {
 		return nil, fmt.Errorf("all TSAs failed: %s", strings.Join(errs, "; "))
 	}
@@ -109,31 +136,11 @@ func AnchorVerifier(roots *x509.CertPool, allowUnpinned bool) ledger.AnchorVerif
 
 // Amend appends an amendment entry (SPEC §4.3).
 func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by string) (ledger.Entry, error) {
-	if reason == "" || by == "" {
-		return nil, errors.New("--reason and --by are required: amendments must say why and who")
-	}
-	if newPurpose == "" && annotation == "" {
-		return nil, errors.New("give --purpose and/or --annotation")
-	}
-	head, _, err := s.Head()
-	if err != nil {
+	if err := checkAmendment(newPurpose, annotation, reason, by); err != nil {
 		return nil, err
 	}
-	if from < 1 || to < from || to > head {
-		return nil, fmt.Errorf("invalid target range %d..%d (head is %d)", from, to, head)
-	}
-	entries, err := s.Entries()
-	if err != nil {
+	if err := checkAmendTarget(s, from, to); err != nil {
 		return nil, err
-	}
-	calls := 0
-	for q := from; q <= to && q < int64(len(entries)); q++ {
-		if entries[q] != nil && entries[q].Type() == ledger.TypeCall {
-			calls++
-		}
-	}
-	if calls == 0 {
-		return nil, fmt.Errorf("no call entries in range %d..%d", from, to)
 	}
 	e := ledger.Entry{"type": ledger.TypeAmendment, "target_from": from, "target_to": to,
 		"reason": reason, "by": by}
@@ -144,6 +151,47 @@ func Amend(s *ledger.Store, from, to int64, newPurpose, annotation, reason, by s
 		e["annotation"] = annotation
 	}
 	return e, s.Append(e)
+}
+
+func checkAmendment(newPurpose, annotation, reason, by string) error {
+	if reason == "" || by == "" {
+		return errors.New("--reason and --by are required: amendments must say why and who")
+	}
+	if newPurpose == "" && annotation == "" {
+		return errors.New("give --purpose and/or --annotation")
+	}
+	return nil
+}
+
+// checkAmendTarget refuses a range outside the ledger or without any call in it.
+func checkAmendTarget(s *ledger.Store, from, to int64) error {
+	head, _, err := s.Head()
+	if err != nil {
+		return err
+	}
+	if from < 1 || to < from || to > head {
+		return fmt.Errorf("invalid target range %d..%d (head is %d)", from, to, head)
+	}
+	entries, err := s.Entries()
+	if err != nil {
+		return err
+	}
+	if countCalls(entries, from, to) == 0 {
+		return fmt.Errorf("no call entries in range %d..%d", from, to)
+	}
+	return nil
+}
+
+// countCalls counts the call entries with seq in from..to. An entry's seq is
+// its index in entries.
+func countCalls(entries []ledger.Entry, from, to int64) int {
+	calls := 0
+	for q := from; q <= to && q < int64(len(entries)); q++ {
+		if entries[q] != nil && entries[q].Type() == ledger.TypeCall {
+			calls++
+		}
+	}
+	return calls
 }
 
 // KeyEvent appends a key_event entry.
@@ -217,56 +265,85 @@ func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (le
 	if err != nil {
 		return nil, nil, err
 	}
-	r := csv.NewReader(strings.NewReader(string(raw)))
-	header, err := r.Read()
+	exp, err := readExport(raw)
 	if err != nil {
 		return nil, nil, err
+	}
+	days := sortedDays(exp)
+	entries, err := s.Entries()
+	if err != nil {
+		return nil, nil, err
+	}
+	cmp := compareDays(days, exp, dayTotals(entries, provider, exp), tolerance)
+	e := reconciliationEntry(provider, raw, days, periodTotals(entries, provider, days), cmp, tolerance)
+	return e, cmp.lines, s.Append(e)
+}
+
+// tally is a pair of token counts.
+type tally struct{ in, out int64 }
+
+// readExport sums the rows of a usage CSV by day.
+func readExport(raw []byte) (map[string]*tally, error) {
+	r := csv.NewReader(bytes.NewReader(raw))
+	header, err := r.Read()
+	if err != nil {
+		return nil, err
 	}
 	col := map[string]int{}
 	for i, h := range header {
 		col[strings.ToLower(strings.TrimSpace(h))] = i
 	}
 	if err := requireColumns(col, "date", "input_tokens", "output_tokens"); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	type tot struct{ in, out int64 }
-	exp := map[string]*tot{}
+	exp := map[string]*tally{}
 	for {
 		rec, err := r.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		d := strings.TrimSpace(rec[col["date"]])
-		if len(d) >= 10 {
-			d = d[:10]
-		}
-		in, _ := strconv.ParseInt(strings.TrimSpace(rec[col["input_tokens"]]), 10, 64)
-		out, _ := strconv.ParseInt(strings.TrimSpace(rec[col["output_tokens"]]), 10, 64)
-		if exp[d] == nil {
-			exp[d] = &tot{}
-		}
-		exp[d].in += in
-		exp[d].out += out
+		addRow(exp, col, rec)
 	}
 	if len(exp) == 0 {
-		return nil, nil, errors.New("CSV has no rows")
+		return nil, errors.New("CSV has no rows")
 	}
+	return exp, nil
+}
+
+// addRow adds one CSV row to its day. Counts that do not parse are zero, and
+// a date is kept as written apart from being cut to its first ten characters.
+func addRow(exp map[string]*tally, col map[string]int, rec []string) {
+	d := strings.TrimSpace(rec[col["date"]])
+	if len(d) >= 10 {
+		d = d[:10]
+	}
+	if exp[d] == nil {
+		exp[d] = &tally{}
+	}
+	exp[d].in += parseCount(rec[col["input_tokens"]])
+	exp[d].out += parseCount(rec[col["output_tokens"]])
+}
+
+func parseCount(s string) int64 {
+	n, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return n
+}
+
+func sortedDays(exp map[string]*tally) []string {
 	var days []string
 	for d := range exp {
 		days = append(days, d)
 	}
 	sort.Strings(days)
-	from, _ := time.Parse("2006-01-02", days[0])
-	to, _ := time.Parse("2006-01-02", days[len(days)-1])
-	entries, err := s.Entries()
-	if err != nil {
-		return nil, nil, err
-	}
-	sum := report.Summarize(entries, report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: provider})
-	led := map[string]*tot{}
+	return days
+}
+
+// dayTotals sums the provider's calls on the days the export has rows for.
+func dayTotals(entries []ledger.Entry, provider string, exp map[string]*tally) map[string]*tally {
+	led := map[string]*tally{}
 	for _, e := range entries {
 		if e == nil || e.Type() != ledger.TypeCall || e.Str("provider") != provider {
 			continue
@@ -276,45 +353,68 @@ func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (le
 			continue
 		}
 		if led[d] == nil {
-			led[d] = &tot{}
+			led[d] = &tally{}
 		}
 		led[d].in += e.Int("tokens_in")
 		led[d].out += e.Int("tokens_out")
 	}
-	var lines []string
-	var mismatched int64
-	var ei, eo int64
+	return led
+}
+
+// periodTotals sums the provider's calls from the first export day to the
+// end of the last. A day that does not parse is a zero time.
+func periodTotals(entries []ledger.Entry, provider string, days []string) tally {
+	from, _ := time.Parse("2006-01-02", days[0])
+	to, _ := time.Parse("2006-01-02", days[len(days)-1])
+	sum := report.Summarize(entries, report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: provider})
+	return tally{sum.Totals.All.TokensIn, sum.Totals.All.TokensOut}
+}
+
+// comparison is the per-day result of checking the ledger against the export.
+type comparison struct {
+	lines      []string
+	mismatched int64
+	export     tally
+}
+
+func compareDays(days []string, exp, led map[string]*tally, tolerance float64) comparison {
+	var c comparison
 	for _, d := range days {
 		l := led[d]
 		if l == nil {
-			l = &tot{}
+			l = &tally{}
 		}
-		ei += exp[d].in
-		eo += exp[d].out
-		diff := func(a, b int64) bool {
-			if b == 0 {
-				return a != 0
-			}
-			x := float64(a-b) / float64(b)
-			return x > tolerance || x < -tolerance
-		}
+		c.export.in += exp[d].in
+		c.export.out += exp[d].out
 		status := "ok"
-		if diff(l.in, exp[d].in) || diff(l.out, exp[d].out) {
+		if outside(l.in, exp[d].in, tolerance) || outside(l.out, exp[d].out, tolerance) {
 			status = "MISMATCH"
-			mismatched++
+			c.mismatched++
 		}
-		lines = append(lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, exp[d].in, exp[d].out, status))
+		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, exp[d].in, exp[d].out, status))
 	}
+	return c
+}
+
+// outside reports whether ledger count a differs from export count b by more than tolerance.
+func outside(a, b int64, tolerance float64) bool {
+	if b == 0 {
+		return a != 0
+	}
+	x := float64(a-b) / float64(b)
+	return x > tolerance || x < -tolerance
+}
+
+func reconciliationEntry(provider string, raw []byte, days []string, led tally, c comparison, tolerance float64) ledger.Entry {
 	result := "match"
-	if mismatched > 0 {
+	if c.mismatched > 0 {
 		result = "mismatch"
 	}
-	e := ledger.Entry{"type": ledger.TypeReconciliation, "provider": provider,
+	return ledger.Entry{"type": ledger.TypeReconciliation, "provider": provider,
 		"period_from": days[0], "period_to": days[len(days)-1], "source_sha256": ledger.SHA256Bytes(raw),
-		"ledger_tokens_in": sum.Totals.All.TokensIn, "ledger_tokens_out": sum.Totals.All.TokensOut,
-		"export_tokens_in": ei, "export_tokens_out": eo, "days_mismatched": mismatched, "result": result,
+		"ledger_tokens_in": led.in, "ledger_tokens_out": led.out,
+		"export_tokens_in": c.export.in, "export_tokens_out": c.export.out, "days_mismatched": c.mismatched, "result": result,
 		"tolerance_pct": int64(tolerance * 100)}
-	return e, lines, s.Append(e)
 }
 
 // requireColumns returns an error naming the first of names missing from col.
