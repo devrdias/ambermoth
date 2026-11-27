@@ -163,30 +163,30 @@ func parseRequest(prefix []byte, complete bool) requestInfo {
 	return ri
 }
 
+// endpointOrder is matched top to bottom against the lowercased path, so a
+// more specific fragment must come before the one it contains.
+//
+//rules:readonly ordered lookup table, never modified
+var endpointOrder = []struct{ fragment, class string }{
+	{"/realtime", "realtime"},
+	{"/chat/completions", "chat.completions"},
+	{"/responses", "responses"},
+	{"/completions", "completions"},
+	{"/embeddings", "embeddings"},
+	{"/messages/count_tokens", "messages.count_tokens"},
+	{"/batches", "batches"},
+	{"/messages", "messages"},
+	{"/files", "files"},
+	{"/models", "models"},
+}
+
 // endpointClass normalises an upstream path (SPEC §4.2).
 func endpointClass(path string) string {
 	p := strings.ToLower(path)
-	switch {
-	case strings.Contains(p, "/realtime"):
-		return "realtime"
-	case strings.Contains(p, "/chat/completions"):
-		return "chat.completions"
-	case strings.Contains(p, "/responses"):
-		return "responses"
-	case strings.Contains(p, "/completions"):
-		return "completions"
-	case strings.Contains(p, "/embeddings"):
-		return "embeddings"
-	case strings.Contains(p, "/messages/count_tokens"):
-		return "messages.count_tokens"
-	case strings.Contains(p, "/batches"):
-		return "batches"
-	case strings.Contains(p, "/messages"):
-		return "messages"
-	case strings.Contains(p, "/files"):
-		return "files"
-	case strings.Contains(p, "/models"):
-		return "models"
+	for _, e := range endpointOrder {
+		if strings.Contains(p, e.fragment) {
+			return e.class
+		}
 	}
 	return "other"
 }
