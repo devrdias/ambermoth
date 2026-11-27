@@ -60,7 +60,7 @@ flowchart LR
 - [x] Go rules applied ([docs/go-rules.md](docs/go-rules.md)): rule checker clean, black-box tests, injected clock and logger
 - [ ] Every function under CRAP 10 (`make crap`; 32 left) (good first task)
 - [x] CI runs `make rules`
-- [ ] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
+- [x] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
 - [ ] `make lint` clean (53 findings: 50 errcheck, 3 staticcheck), then CI runs it
 - [ ] CI runs `make crap` once it passes
 - [ ] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries

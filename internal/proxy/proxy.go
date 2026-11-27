@@ -306,7 +306,7 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 			return nil // ReverseProxy will reject this response itself
 		}
 		c.transport = "websocket"
-		uc := &upgradeConn{rwc: rwc, p: p, c: c, out: hmac.New(sha256.New, c.entryKey)}
+		uc := newUpgradeConn(rwc, p, c)
 		p.mu.Lock()
 		p.upgrades[uc] = struct{}{}
 		p.mu.Unlock()
@@ -327,35 +327,68 @@ type upgradeConn struct {
 	rwc io.ReadWriteCloser
 	p   *Proxy
 	c   *call
-	mu  sync.Mutex
-	out hash.Hash
-	n   int64
+
+	mu       sync.Mutex
+	idle     *sync.Cond // signalled when inflight drops
+	inflight int        // Read and Write calls that have not counted their bytes yet
+	out      hash.Hash
+	n        int64
+}
+
+func newUpgradeConn(rwc io.ReadWriteCloser, p *Proxy, c *call) *upgradeConn {
+	u := &upgradeConn{rwc: rwc, p: p, c: c, out: hmac.New(sha256.New, c.entryKey)}
+	u.idle = sync.NewCond(&u.mu)
+	return u
+}
+
+func (u *upgradeConn) begin() {
+	u.mu.Lock()
+	u.inflight++
+	u.mu.Unlock()
+}
+
+func (u *upgradeConn) end() {
+	u.inflight--
+	if u.inflight == 0 {
+		u.idle.Broadcast()
+	}
+	u.mu.Unlock()
 }
 
 func (u *upgradeConn) Read(b []byte) (int, error) {
+	u.begin()
 	n, err := u.rwc.Read(b)
+	u.mu.Lock()
 	if n > 0 {
-		u.mu.Lock()
 		u.out.Write(b[:n])
 		u.n += int64(n)
-		u.mu.Unlock()
 	}
+	u.end()
 	return n, err
 }
 
 func (u *upgradeConn) Write(b []byte) (int, error) {
+	u.begin()
 	n, err := u.rwc.Write(b)
+	u.mu.Lock()
 	if n > 0 {
-		u.mu.Lock()
 		u.c.reqMAC.Write(b[:n])
 		u.c.reqBytes += int64(n)
-		u.mu.Unlock()
 	}
+	u.end()
 	return n, err
 }
 
+// Close records the session once Read and Write calls that were already in
+// progress have counted their bytes. Closing rwc first is what ends them, so
+// this does not wait on a quiet connection.
 func (u *upgradeConn) Close() error {
 	err := u.rwc.Close()
+	u.mu.Lock()
+	for u.inflight > 0 {
+		u.idle.Wait()
+	}
+	u.mu.Unlock()
 	u.c.once.Do(func() {
 		u.mu.Lock()
 		defer u.mu.Unlock()
