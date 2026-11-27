@@ -695,3 +695,31 @@ func TestVerifyCorpusSegmentInsideLongerLedger(t *testing.T) {
 		})
 	}
 }
+
+// verifyReaderCorpusInput runs VerifyReader over in.
+func verifyReaderCorpusInput(t *testing.T, in corpusInput) *ledger.Report {
+	t.Helper()
+	r, err := ledger.VerifyReader(bytes.NewReader(in.data), corpusOptions(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// VerifyReader must give the golden report of every corpus case, byte for
+// byte. It never rewrites a golden.
+func TestVerifyReaderCorpus(t *testing.T) {
+	for _, c := range corpus() {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := projectReport(t, verifyReaderCorpusInput(t, c.build(t)))
+			want, err := os.ReadFile(goldenPath(c.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Errorf("VerifyReader report differs from %s\n%s", goldenPath(c.name), firstDifference(got, want))
+			}
+		})
+	}
+}
