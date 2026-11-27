@@ -95,6 +95,40 @@ func (o Options) filter() report.Filter {
 
 // Build writes an evidence pack zip and returns its manifest.
 func Build(ctx context.Context, s *ledger.Store, o Options) (*Manifest, error) {
+	src, err := readSource(s, o)
+	if err != nil {
+		return nil, err
+	}
+	f := o.filter()
+	sp, err := src.chooseSpan(f)
+	if err != nil {
+		return nil, err
+	}
+	c := src.cutAt(sp)
+	files, disclosed, err := c.files(s, src.entries, o.Disclose)
+	if err != nil {
+		return nil, err
+	}
+	m := c.manifest(s, o, disclosed)
+	if err := addReadables(files, m, c.summary(f), ledger.Verify(c.seg, c.segLines, src.check)); err != nil {
+		return nil, err
+	}
+	names, err := addManifest(ctx, files, m, o)
+	if err != nil {
+		return nil, err
+	}
+	return m, writeZip(o.Out, names, files, s.Now())
+}
+
+// source is a ledger read for packing, verified from genesis.
+type source struct {
+	entries []ledger.Entry
+	lines   [][]byte
+	full    *ledger.Report
+	check   ledger.VerifyOptions
+}
+
+func readSource(s *ledger.Store, o Options) (*source, error) {
 	entries, lines, err := ledger.ReadFile(s.LedgerPath())
 	if err != nil {
 		return nil, err
@@ -104,48 +138,74 @@ func Build(ctx context.Context, s *ledger.Store, o Options) (*Manifest, error) {
 	if !full.OK() || !full.StartsAtGenesis {
 		return nil, fmt.Errorf("the ledger does not verify; refusing to build a pack from it:\n  %s", strings.Join(full.Errors, "\n  "))
 	}
-	f := o.filter()
-	firstCall, lastCall, ok := callRange(entries, f)
+	return &source{entries: entries, lines: lines, full: full, check: check}, nil
+}
+
+// chooseSpan picks the segment for the calls f matches.
+func (src *source) chooseSpan(f report.Filter) (span, error) {
+	firstCall, lastCall, ok := callRange(src.entries, f)
 	if !ok {
-		return nil, errors.New("no calls in the selected period")
+		return span{}, errors.New("no calls in the selected period")
 	}
-	sp := selectSpan(full.Anchors, len(entries), firstCall, lastRelevantSeq(entries, f, firstCall, lastCall))
-	seg, segLines := entries[sp.start:sp.end+1], lines[sp.start:sp.end+1]
-	ctxEntries, ctxLines := contextEntries(entries, lines, sp.start)
+	last := lastRelevantSeq(src.entries, f, firstCall, lastCall)
+	return selectSpan(src.full.Anchors, len(src.entries), firstCall, last), nil
+}
 
-	files := map[string][]byte{"ledger/genesis.json": append(append([]byte{}, lines[0]...), '\n')}
-	files["ledger/segment.jsonl"] = joinLines(segLines)
-	if len(ctxLines) > 0 {
-		files["ledger/context.jsonl"] = joinLines(ctxLines)
+// cut is the part of the ledger a pack carries: the segment, and the context
+// entries before it.
+type cut struct {
+	span
+	genesis    []byte
+	seg        []ledger.Entry
+	segLines   [][]byte
+	ctxEntries []ledger.Entry
+	ctxLines   [][]byte
+}
+
+func (src *source) cutAt(sp span) cut {
+	ctxEntries, ctxLines := contextEntries(src.entries, src.lines, sp.start)
+	return cut{span: sp, genesis: append(append([]byte{}, src.lines[0]...), '\n'),
+		seg: src.entries[sp.start : sp.end+1], segLines: src.lines[sp.start : sp.end+1],
+		ctxEntries: ctxEntries, ctxLines: ctxLines}
+}
+
+// files returns the ledger files of the pack, with the anchor tokens and the
+// disclosure keys, and the seqs disclosed.
+func (c cut) files(s *ledger.Store, entries []ledger.Entry, disclose []int64) (map[string][]byte, []int64, error) {
+	files := map[string][]byte{"ledger/genesis.json": c.genesis, "ledger/segment.jsonl": joinLines(c.segLines)}
+	if len(c.ctxLines) > 0 {
+		files["ledger/context.jsonl"] = joinLines(c.ctxLines)
 	}
-	if err := addAnchorTokens(files, anchorDir(s), seg); err != nil {
-		return nil, err
+	if err := addAnchorTokens(files, anchorDir(s), c.seg); err != nil {
+		return nil, nil, err
 	}
-	disclosed, err := addDisclosures(files, s, entries, seg, o.Disclose)
+	disclosed, err := addDisclosures(files, s, entries, c.seg, disclose)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	return files, disclosed, nil
+}
 
+// manifest describes the cut, without the file list.
+func (c cut) manifest(s *ledger.Store, o Options, disclosed []int64) *Manifest {
+	last := c.seg[len(c.seg)-1]
 	m := &Manifest{
 		Format: Format, Generator: o.Generator, Created: ledger.FormatTime(s.Now()), LedgerID: s.LedgerID,
 		Account: o.Account, ProviderFilter: o.Provider,
 		Period: Period{From: o.From.Format("2006-01-02"), To: o.To.AddDate(0, 0, -1).Format("2006-01-02")},
-		Segment: Segment{FirstSeq: seg[0].Seq(), LastSeq: seg[len(seg)-1].Seq(), FirstPrevHash: seg[0].Str("prev_hash"),
-			LastHash: seg[len(seg)-1].Hash(), StartAnchored: sp.startAnchored, EndAnchored: sp.endAnchored},
-		ContextEntries: len(ctxLines), Disclosed: disclosed, Totals: report.Summarize(seg, f).Totals,
+		Segment: Segment{FirstSeq: c.seg[0].Seq(), LastSeq: last.Seq(), FirstPrevHash: c.seg[0].Str("prev_hash"),
+			LastHash: last.Hash(), StartAnchored: c.startAnchored, EndAnchored: c.endAnchored},
+		ContextEntries: len(c.ctxLines), Disclosed: disclosed, Totals: report.Summarize(c.seg, o.filter()).Totals,
 	}
 	if m.Account == "" {
 		m.Account = "(account not specified)"
 	}
-	ctxSummary := report.Summarize(append(append([]ledger.Entry{}, ctxEntries...), seg...), f)
-	if err := addReadables(files, m, ctxSummary, ledger.Verify(seg, segLines, check)); err != nil {
-		return nil, err
-	}
-	names, err := addManifest(ctx, files, m, o)
-	if err != nil {
-		return nil, err
-	}
-	return m, writeZip(o.Out, names, files, s.Now())
+	return m
+}
+
+// summary aggregates the context and the segment together.
+func (c cut) summary(f report.Filter) *report.Summary {
+	return report.Summarize(append(append([]ledger.Entry{}, c.ctxEntries...), c.seg...), f)
 }
 
 // callRange returns the first and last seq of the calls f matches.
@@ -671,18 +731,27 @@ func (c *packCheck) checkSegment() error {
 	if len(seg) == 0 || seg[0] == nil {
 		return nil
 	}
+	c.checkSegmentStart(seg[0], lines[0])
+	c.checkSegmentEnd(seg[len(seg)-1])
+	return nil
+}
+
+func (c *packCheck) checkSegmentStart(first ledger.Entry, line []byte) {
 	ms := c.m.Segment
-	if seg[0].Seq() != ms.FirstSeq || seg[0].Str("prev_hash") != ms.FirstPrevHash {
+	if first.Seq() != ms.FirstSeq || first.Str("prev_hash") != ms.FirstPrevHash {
 		c.errf("segment start does not match manifest")
 	}
-	if seg[0].Seq() == 0 && !bytes.Equal(bytes.TrimSpace(lines[0]), c.genesis) {
+	if first.Seq() == 0 && !bytes.Equal(bytes.TrimSpace(line), c.genesis) {
 		c.errf("segment starts at seq 0 but differs from genesis.json")
 	}
-	last := seg[len(seg)-1]
+}
+
+// checkSegmentEnd takes the last entry, which is nil when its line did not parse.
+func (c *packCheck) checkSegmentEnd(last ledger.Entry) {
+	ms := c.m.Segment
 	if last == nil || last.Seq() != ms.LastSeq || last.Hash() != ms.LastHash {
 		c.errf("segment end does not match manifest")
 	}
-	return nil
 }
 
 func (c *packCheck) anchorToken(name string) ([]byte, error) {
@@ -696,24 +765,38 @@ func (c *packCheck) anchorToken(name string) ([]byte, error) {
 // checkAnchoringClaims checks the manifest's claims about anchored ends.
 func (c *packCheck) checkAnchoringClaims() {
 	ms := c.m.Segment
-	anchored := map[int64]bool{}
-	for _, a := range c.r.Ledger.Anchors {
-		if a.OK {
-			anchored[a.TargetSeq] = true
-		}
-	}
-	if ms.StartAnchored && !anchored[ms.FirstSeq] {
-		c.errf("manifest claims the segment start is anchored, but no valid anchor covers seq %d", ms.FirstSeq)
-	}
-	if ms.EndAnchored && c.r.Ledger.LastAnchoredSeq < 0 {
-		c.errf("manifest claims the segment end is anchored, but no valid anchor found")
-	}
-	if !ms.EndAnchored {
-		c.warnf("the last %d entries of the segment are not anchored (self-attested)", c.r.Ledger.UnanchoredTail)
-	}
+	c.checkStartClaim(ms)
+	c.checkEndClaim(ms)
 	if !ms.StartAnchored && ms.FirstSeq != 0 {
 		c.errf("segment neither starts at genesis nor at an anchored entry")
 	}
+}
+
+func (c *packCheck) checkStartClaim(ms Segment) {
+	if ms.StartAnchored && !c.anchorCovers(ms.FirstSeq) {
+		c.errf("manifest claims the segment start is anchored, but no valid anchor covers seq %d", ms.FirstSeq)
+	}
+}
+
+// checkEndClaim only asks for some valid anchor, not one that covers the last entry.
+func (c *packCheck) checkEndClaim(ms Segment) {
+	if !ms.EndAnchored {
+		c.warnf("the last %d entries of the segment are not anchored (self-attested)", c.r.Ledger.UnanchoredTail)
+		return
+	}
+	if c.r.Ledger.LastAnchoredSeq < 0 {
+		c.errf("manifest claims the segment end is anchored, but no valid anchor found")
+	}
+}
+
+// anchorCovers reports whether a valid anchor in the segment targets seq.
+func (c *packCheck) anchorCovers(seq int64) bool {
+	for _, a := range c.r.Ledger.Anchors {
+		if a.OK && a.TargetSeq == seq {
+			return true
+		}
+	}
+	return false
 }
 
 // checkContext checks the context entries are self-consistent and precede the segment.
