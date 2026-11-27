@@ -345,16 +345,16 @@ func writeZip(path string, names []string, files map[string][]byte, modified tim
 	for _, n := range names {
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: n, Method: zip.Deflate, Modified: modified})
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 		if _, err := w.Write(files[n]); err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 	}
 	if err := zw.Close(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()
@@ -521,7 +521,7 @@ func ReadPack(path string) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	const maxTotal = 1 << 30 // 1 GiB uncompressed per pack
 	files := map[string][]byte{}
 	var total int64
@@ -534,7 +534,7 @@ func ReadPack(path string) (map[string][]byte, error) {
 			return nil, err
 		}
 		b, err := io.ReadAll(io.LimitReader(rc, maxTotal-total+1))
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			return nil, err
 		}

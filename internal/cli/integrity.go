@@ -27,7 +27,7 @@ func (a *App) cmdAnchor(ctx context.Context, args []string) error {
 	}
 	es, err := ops.Anchor(ctx, s, tsas, nil)
 	for _, e := range es {
-		fmt.Fprintf(a.env.Stdout, "anchored seq %d (%s) via %s at %s\n", e.Int("target_seq"), ledger.ShortFP(e.Str("target_hash")), e.Str("tsa"), e.Str("gen_time"))
+		_, _ = fmt.Fprintf(a.env.Stdout, "anchored seq %d (%s) via %s at %s\n", e.Int("target_seq"), ledger.ShortFP(e.Str("target_hash")), e.Str("tsa"), e.Str("gen_time"))
 	}
 	return err
 }
@@ -79,48 +79,48 @@ func writeJSON(w io.Writer, v any) error {
 }
 
 func printLedgerReport(w io.Writer, r *ledger.Report) {
-	fmt.Fprintf(w, "Ledger verification: %s\n", status(r.OK()))
+	_, _ = fmt.Fprintf(w, "Ledger verification: %s\n", status(r.OK()))
 	origin := ", segment"
 	if r.StartsAtGenesis {
 		origin = ", from genesis"
 	}
-	fmt.Fprintf(w, "  entries:   %d (seq %d…%d)%s\n", r.Entries, r.FirstSeq, r.LastSeq, origin)
-	fmt.Fprintf(w, "  head:      %s\n", r.HeadHash)
+	_, _ = fmt.Fprintf(w, "  entries:   %d (seq %d…%d)%s\n", r.Entries, r.FirstSeq, r.LastSeq, origin)
+	_, _ = fmt.Fprintf(w, "  head:      %s\n", r.HeadHash)
 	printAnchors(w, r)
 	if r.MaxAnchorLagSeconds >= 0 {
-		fmt.Fprintf(w, "  anchor lag: largest %s (seq %d); %d entries anchored more than 24h after their own timestamp\n",
+		_, _ = fmt.Fprintf(w, "  anchor lag: largest %s (seq %d); %d entries anchored more than 24h after their own timestamp\n",
 			ledger.FormatLag(r.MaxAnchorLagSeconds), r.MaxAnchorLagSeq, r.EntriesLaggingOver24h)
 	}
 	if r.DroppedCalls > 0 {
-		fmt.Fprintf(w, "  gaps:      %d gap entries, %d calls not recorded (fail-open)\n", len(r.Gaps), r.DroppedCalls)
+		_, _ = fmt.Fprintf(w, "  gaps:      %d gap entries, %d calls not recorded (fail-open)\n", len(r.Gaps), r.DroppedCalls)
 	}
 	printLines(w, "  ERROR:", r.Errors)
 	printLines(w, "  warning:", r.Warnings)
 }
 
 func printAnchors(w io.Writer, r *ledger.Report) {
-	fmt.Fprintf(w, "  anchors:   %d", len(r.Anchors))
+	_, _ = fmt.Fprintf(w, "  anchors:   %d", len(r.Anchors))
 	if r.LastAnchoredSeq < 0 {
-		fmt.Fprintln(w, " — nothing is anchored yet; run 'ambermoth anchor'")
+		_, _ = fmt.Fprintln(w, " — nothing is anchored yet; run 'ambermoth anchor'")
 	} else {
-		fmt.Fprintf(w, ", anchored through seq %d, %d entries after the last anchor\n", r.LastAnchoredSeq, r.UnanchoredTail)
+		_, _ = fmt.Fprintf(w, ", anchored through seq %d, %d entries after the last anchor\n", r.LastAnchoredSeq, r.UnanchoredTail)
 	}
 	for _, an := range r.Anchors {
 		if !an.OK {
-			fmt.Fprintf(w, "    ✗ seq %-6d %s  %s\n", an.TargetSeq, an.TSA, an.Error)
+			_, _ = fmt.Fprintf(w, "    ✗ seq %-6d %s  %s\n", an.TargetSeq, an.TSA, an.Error)
 			continue
 		}
 		pin := "pinned"
 		if !an.Pinned {
 			pin = "NOT PINNED"
 		}
-		fmt.Fprintf(w, "    ✓ seq %-6d %s  %s  %s (%s)\n", an.TargetSeq, ledger.FormatTime(an.GenTime), an.TSA, an.Signer, pin)
+		_, _ = fmt.Fprintf(w, "    ✓ seq %-6d %s  %s  %s (%s)\n", an.TargetSeq, ledger.FormatTime(an.GenTime), an.TSA, an.Signer, pin)
 	}
 }
 
 func printLines(w io.Writer, prefix string, lines []string) {
 	for _, l := range lines {
-		fmt.Fprintln(w, prefix, l)
+		_, _ = fmt.Fprintln(w, prefix, l)
 	}
 }
 

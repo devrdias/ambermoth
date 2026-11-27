@@ -102,7 +102,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	name, rest, _ := strings.Cut(trimmed, "/")
 	if name == "_ambermoth" && rest == "health" {
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"ok":true}`)
+		_, _ = io.WriteString(w, `{"ok":true}`)
 		return
 	}
 	rp, ok := p.rps[name]
@@ -412,7 +412,7 @@ func (p *Proxy) CloseUpgrades() {
 	}
 	p.mu.Unlock()
 	for _, u := range open {
-		u.Close()
+		_ = u.Close() // already recorded by Close; the socket error has no one to act on it
 	}
 }
 

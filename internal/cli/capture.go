@@ -44,7 +44,7 @@ func (a *App) cmdInit(_ context.Context, args []string) error {
 			return fmt.Errorf("writing config: %w", err)
 		}
 	}
-	fmt.Fprintf(a.env.Stdout, `Ledger created in %s
+	_, _ = fmt.Fprintf(a.env.Stdout, `Ledger created in %s
   ledger id: %s
   master key: %s/secret.key  (back it up; keep it private — it never leaves this machine)
 
@@ -104,7 +104,7 @@ func (a *App) serveProxy(ctx context.Context, s *ledger.Store, cfg proxy.Config,
 	w := proxy.NewWriter(s, writerQueue, a.env.Logger)
 	p, err := proxy.New(cfg, s, w, nil, a.env.Logger)
 	if err != nil {
-		ln.Close()
+		_ = ln.Close()
 		return err
 	}
 	// The writer must outlive the server so late calls are still recorded, so
@@ -114,7 +114,8 @@ func (a *App) serveProxy(ctx context.Context, s *ledger.Store, cfg proxy.Config,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		w.Run(context.WithoutCancel(ctx))
+		// Run only returns the context error, which is nil without cancel.
+		_ = w.Run(context.WithoutCancel(ctx))
 	}()
 	defer func() {
 		stopLoops()
@@ -132,11 +133,11 @@ func (a *App) serveProxy(ctx context.Context, s *ledger.Store, cfg proxy.Config,
 		return err
 	case <-ctx.Done():
 	}
-	fmt.Fprintln(a.env.Stderr, "ambermoth: shutting down, waiting for in-flight calls…")
+	_, _ = fmt.Fprintln(a.env.Stderr, "ambermoth: shutting down, waiting for in-flight calls…")
 	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownGrace)
 	defer cancel()
 	if err := srv.Shutdown(sctx); err != nil {
-		fmt.Fprintln(a.env.Stderr, "ambermoth: some calls were still running at shutdown:", err)
+		_, _ = fmt.Fprintln(a.env.Stderr, "ambermoth: some calls were still running at shutdown:", err)
 	}
 	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
 		return err
@@ -160,7 +161,7 @@ func (a *App) printListening(addr string, cfg proxy.Config) {
 	for n := range cfg.Upstreams {
 		names = append(names, "/"+n)
 	}
-	fmt.Fprintf(a.env.Stderr, "ambermoth proxy listening on http://%s (upstreams: %s)\n", addr, strings.Join(names, " "))
+	_, _ = fmt.Fprintf(a.env.Stderr, "ambermoth proxy listening on http://%s (upstreams: %s)\n", addr, strings.Join(names, " "))
 }
 
 // anchorLoop anchors the chain head every interval until ctx is cancelled.
@@ -206,7 +207,7 @@ func (a *App) cmdKey(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.env.Stdout, "recorded key %s: %s (seq %d)\n", action, e.Str("key_fp"), e.Seq())
+	_, _ = fmt.Fprintf(a.env.Stdout, "recorded key %s: %s (seq %d)\n", action, e.Str("key_fp"), e.Seq())
 	return nil
 }
 
@@ -223,7 +224,7 @@ func (a *App) readKey(keyEnv, fp string) (string, error) {
 	if fp != "" {
 		return "", nil
 	}
-	fmt.Fprint(a.env.Stderr, "API key (read from stdin, not stored): ")
+	_, _ = fmt.Fprint(a.env.Stderr, "API key (read from stdin, not stored): ")
 	return a.env.ReadSecret()
 }
 
@@ -246,7 +247,7 @@ func (a *App) cmdLink(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.env.Stdout, "linked %s → %s @ %.12s (history since %s, %d commits; seq %d)\n", *purpose, e.Str("repo"),
+	_, _ = fmt.Fprintf(a.env.Stdout, "linked %s → %s @ %.12s (history since %s, %d commits; seq %d)\n", *purpose, e.Str("repo"),
 		e.Str("commit"), e.Str("first_commit_ts"), e.Int("commit_count"), e.Seq())
 	return nil
 }
@@ -277,6 +278,6 @@ func (a *App) cmdAmend(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.env.Stdout, "amendment recorded (seq %d) for entries %d–%d\n", e.Seq(), *from, *to)
+	_, _ = fmt.Fprintf(a.env.Stdout, "amendment recorded (seq %d) for entries %d–%d\n", e.Seq(), *from, *to)
 	return nil
 }

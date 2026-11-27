@@ -17,7 +17,7 @@ func TerminalSecret(in *os.File, errOut io.Writer) func() (string, error) {
 		if restore := noEcho(in); restore != nil {
 			defer func() {
 				restore()
-				fmt.Fprintln(errOut)
+				_, _ = fmt.Fprintln(errOut)
 			}()
 		}
 		return readLine(in)
