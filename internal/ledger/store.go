@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -143,7 +144,33 @@ func readGenesis(path string) (Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Entry(gv.(map[string]any)), nil
+	return asObject("genesis line", gv)
+}
+
+// asObject returns v as an Entry, or an error naming what and the JSON kind
+// it was when it is not an object.
+func asObject(what string, v any) (Entry, error) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s is not a JSON object (got %s)", what, jsonKind(v))
+	}
+	return Entry(m), nil
+}
+
+func jsonKind(v any) string {
+	switch v.(type) {
+	case nil:
+		return "null"
+	case []any:
+		return "array"
+	case string:
+		return "string"
+	case json.Number:
+		return "number"
+	case bool:
+		return "boolean"
+	}
+	return "unknown"
 }
 
 func (s *Store) path() string { return filepath.Join(s.Dir, LedgerFile) }
@@ -180,7 +207,10 @@ func (s *Store) refreshTail() error {
 	if err != nil {
 		return fmt.Errorf("last ledger line is corrupt (truncated write?): %w", err)
 	}
-	e := Entry(v.(map[string]any))
+	e, err := asObject("last ledger line", v)
+	if err != nil {
+		return err
+	}
 	s.lastSeq, s.lastHash, s.size = e.Seq(), e.Hash(), st.Size()
 	return nil
 }
