@@ -838,7 +838,9 @@ func (c *packCheck) checkStartClaim(ms Segment) {
 	}
 }
 
-// checkEndClaim only asks for some valid anchor, not one that covers the last entry.
+// checkEndClaim requires an anchored end to be an anchor entry: a segment built
+// with an anchored end stops at the anchor entries for its head. A bad token on
+// that entry is reported by the ledger check.
 func (c *packCheck) checkEndClaim(ms Segment) {
 	if !ms.EndAnchored {
 		c.warnf("the last %d entries of the segment are not anchored (self-attested)", c.r.Ledger.UnanchoredTail)
@@ -846,6 +848,14 @@ func (c *packCheck) checkEndClaim(ms Segment) {
 	}
 	if c.r.Ledger.LastAnchoredSeq < 0 {
 		c.errf("manifest claims the segment end is anchored, but no valid anchor found")
+		return
+	}
+	if len(c.seg) == 0 {
+		return
+	}
+	// a missing, unparsed or moved last entry is already an error from checkSegmentEnd
+	if last := c.seg[len(c.seg)-1]; last != nil && last.Seq() == ms.LastSeq && last.Type() != ledger.TypeAnchor {
+		c.errf("manifest claims the segment end is anchored, but the last entry (seq %d) is not an anchor", ms.LastSeq)
 	}
 }
 
