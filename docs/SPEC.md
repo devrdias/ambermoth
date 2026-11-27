@@ -388,7 +388,14 @@ pack.zip
 
 `ambermoth verify-pack pack.zip [--report report.html] [--tsa-ca root.pem] [--allow-unpinned-tsa]`
 
-Checks every `files[]` hash, runs §8 on `ledger/segment.jsonl` with the pack's
+Checks every `files[]` hash and that the pack holds every file §9.2 defines
+for it: `manifest.json`, `summary.html`, `LIMITS.md`, `VERIFY.md`,
+`letter-template.md`, `ledger/genesis.json`, `ledger/segment.jsonl`, the token
+of every anchor entry in the segment, `ledger/context.jsonl` when
+`context_entries` is not zero (and then exactly that many entries) and
+`disclosures/entry-keys.json` when `disclosed` is not empty (with a key for each
+of them and for no others). The sender writes `files[]`, so a file it leaves out
+of the list is not excused. Runs §8 on `ledger/segment.jsonl` with the pack's
 anchors, checks `genesis.json` hash/fields, recomputes the totals from the
 segment and compares them with `manifest.totals`, and validates
 `manifest.tsr` (against the pinned roots) if present.
@@ -413,7 +420,15 @@ before the segment are included in `ledger/context.jsonl`. Each is internally
 consistent, but the pack cannot prove where it sat in the chain, so the summary
 labels them "before the segment · self-attested".
 
-A pack is at most 1 GiB uncompressed; larger archives are refused.
+A pack is at most 1 GiB uncompressed; larger archives are refused, and so is
+one with a zip entry whose name is not a plain relative path (a `..` or empty
+part, a leading `/`, a backslash), a name that appears twice, or an entry that
+is not a regular file (a symlink, say). `ambermoth pack` takes the token of an
+anchor entry only from a `token_file` that is a plain file name, and refuses
+one with a directory part. A line of
+`ledger/segment.jsonl`, `ledger/context.jsonl` or `ledger/genesis.json` is at
+most 16 MiB; a longer one is a failed check that names the file and the line,
+not a command error.
 
 ### 9.4 Contents map (product spec Appendix A)
 

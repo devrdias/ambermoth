@@ -17,9 +17,10 @@ import (
 type fixtureKind int
 
 const (
-	midPack     fixtureKind = iota // segment 2..6, anchored at both ends, one context entry
-	genesisPack                    // segment 0..4, anchor at seq 3, unanchored tail
-	barePack                       // segment 0..2, no anchors
+	midPack       fixtureKind = iota // segment 2..6, anchored at both ends, one context entry
+	genesisPack                      // segment 0..4, anchor at seq 3, unanchored tail
+	barePack                         // segment 0..2, no anchors
+	disclosedPack                    // the bare pack with the keys of seq 1 disclosed
 )
 
 const (
@@ -27,6 +28,7 @@ const (
 	totalsDiffer  = "usage totals in manifest do not match totals recomputed from the ledger segment"
 	startDiffers  = "segment start does not match manifest"
 	endDiffers    = "segment end does not match manifest"
+	noContext     = "manifest lists 1 context entries but ledger/context.jsonl has 0"
 )
 
 // tokenName turns "3-0-127.0.0.1_41234.tsr" into "3-0-HOST.tsr": the port is random.
@@ -182,7 +184,7 @@ func segmentCases() []badPackCase {
 				rawLine(4, func(l []byte) []byte { line = l; return l })(d)
 				d.files["ledger/context.jsonl"] = append(d.files["ledger/context.jsonl"], line...)
 			},
-			want: []string{"context entry seq 4 is not before the segment", summaryEdited}},
+			want: []string{"context entry seq 4 is not before the segment", "manifest lists 1 context entries but ledger/context.jsonl has 2", summaryEdited}},
 	}
 }
 
@@ -240,10 +242,14 @@ func anchoringCases() []badPackCase {
 			edit: useToken(6, func(*draft) []byte { return []byte("not a token") }), want: []string{"anchor seq 6: not a TimeStampResp: asn1: syntax error: data truncated"}},
 		{name: "a token that does not match its anchor entry", fixture: midPack, touches: []string{"anchors/5-0-HOST.tsr"},
 			edit: func(d *draft) { d.files[tokenOf(d, 6)] = d.files[tokenOf(d, 3)] }, want: []string{summaryEdited, "anchor seq 6: token file hash mismatch"}},
-		{name: "a context count that disagrees with the file", fixture: midPack, rerender: true, accepted: true,
-			edit: manifest(func(m *pack.Manifest) { m.ContextEntries = 7 })},
-		{name: "a context file left out", fixture: midPack, rerender: true, accepted: true,
-			edit: func(d *draft) { delete(d.files, "ledger/context.jsonl") }},
+		{name: "a context count that disagrees with the file", fixture: midPack, rerender: true,
+			edit: manifest(func(m *pack.Manifest) { m.ContextEntries = 7 }), want: []string{"manifest lists 7 context entries but ledger/context.jsonl has 1"}},
+		{name: "a context file left out", fixture: midPack, rerender: true, touches: []string{contextFile},
+			edit: func(d *draft) { delete(d.files, contextFile) }, want: []string{noContext}},
+		{name: "a context file in a pack that lists no context entries", fixture: midPack, rerender: true,
+			edit: manifest(func(m *pack.Manifest) { m.ContextEntries = 0 }), want: []string{"manifest lists 0 context entries but ledger/context.jsonl has 1"}},
+		{name: "a context file left out and the count set to zero", fixture: midPack, rerender: true, accepted: true,
+			edit: func(d *draft) { delete(d.files, contextFile); d.m.ContextEntries = 0 }},
 		{name: "an anchor of a seq before the segment", fixture: midPack, rerender: true, touches: []string{"ledger/segment.jsonl"},
 			edit: setField(6, "target_seq", int64(1)), want: []string{"anchor seq 6: target seq 1 is outside the verified range"}},
 		{name: "an anchor of a seq after the segment", fixture: midPack, rerender: true, touches: []string{"ledger/segment.jsonl"},
@@ -253,8 +259,14 @@ func anchoringCases() []badPackCase {
 	}
 }
 
+const contextFile = "ledger/context.jsonl"
+
+func allPacks(t *testing.T) map[fixtureKind]goodPack {
+	return map[fixtureKind]goodPack{midPack: newMidPack(t), genesisPack: newGenesisPack(t), barePack: newBarePack(t), disclosedPack: newDisclosedPack(t)}
+}
+
 func TestVerifyPackAnchoringFailures(t *testing.T) {
-	packs := map[fixtureKind]goodPack{midPack: newMidPack(t), genesisPack: newGenesisPack(t), barePack: newBarePack(t)}
+	packs := allPacks(t)
 	runBadPackCases(t, packs, anchoringCases())
 }
 
@@ -281,7 +293,7 @@ func otherGenesis(d *draft) {
 }
 
 func TestVerifyPackSegmentFailures(t *testing.T) {
-	packs := map[fixtureKind]goodPack{midPack: newMidPack(t), genesisPack: newGenesisPack(t), barePack: newBarePack(t)}
+	packs := allPacks(t)
 	runBadPackCases(t, packs, segmentCases())
 }
 
@@ -342,11 +354,44 @@ func hasPrefixLine(ls []string, prefix string) bool {
 	return false
 }
 
-func TestVerifyPackFailsOnASegmentLineTooLongToRead(t *testing.T) {
-	g := newBarePack(t)
-	d := g.draft(t)
-	d.files["ledger/segment.jsonl"] = bytes.Repeat([]byte("a"), 17<<20)
-	if _, err := pack.VerifyPack(d.write(true), g.e.verifyOptions()); err == nil || err.Error() != "bufio.Scanner: token too long" {
-		t.Fatalf("error = %v, want bufio.Scanner: token too long", err)
+func TestVerifyPackReportsALineTooLongToRead(t *testing.T) {
+	huge := bytes.Repeat([]byte("a"), 17<<20)
+	g := newMidPack(t)
+	cases := []struct {
+		name string
+		edit func(d *draft)
+		want string // an exact error of the report
+	}{
+		{"a first segment line", func(d *draft) { d.files["ledger/segment.jsonl"] = huge }, "ledger/segment.jsonl: line 1 is longer than 16 MiB"},
+		{"a later segment line", func(d *draft) {
+			d.files["ledger/segment.jsonl"] = append(append(d.files["ledger/segment.jsonl"], '\n', '\n'), huge...)
+		}, "ledger/segment.jsonl: line 8 is longer than 16 MiB"},
+		{"a context line", func(d *draft) { d.files[contextFile] = huge }, "ledger/context.jsonl: line 1 is longer than 16 MiB"},
+		{"a genesis line", func(d *draft) { d.files["ledger/genesis.json"] = huge }, "ledger/genesis.json: line 1 is longer than 16 MiB"},
 	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := g.draft(t)
+			c.edit(d)
+			r, err := pack.VerifyPack(d.write(true), g.e.verifyOptions())
+			if err != nil {
+				t.Fatalf("VerifyPack: %v, want a report", err)
+			}
+			if r.OK() || !hasLine(lines(r), c.want) {
+				t.Errorf("OK=%v, want the error %q in:\n%s", r.OK(), c.want, strings.Join(lines(r), "\n"))
+			}
+			if len(r.ReportHTML) == 0 {
+				t.Error("no report was rendered")
+			}
+		})
+	}
+}
+
+func hasLine(ls []string, want string) bool {
+	for _, l := range ls {
+		if l == want {
+			return true
+		}
+	}
+	return false
 }

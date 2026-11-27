@@ -6,3 +6,5 @@ var WriteZip = writeZip
 var CodeLinkFor = codeLinkFor
 
 var RenderSummary = renderSummary
+
+var AddAnchorTokens = addAnchorTokens
