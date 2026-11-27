@@ -33,6 +33,11 @@ type VerifyOptions struct {
 	LoadToken     func(name string) ([]byte, error) // overrides AnchorDir (e.g. reading from a zip)
 	CheckAnchor   AnchorVerifier                    // nil = skip cryptographic token checks (reported)
 	TimeTolerance time.Duration                     // default 5s
+	// OnEntry is called by VerifyReader for every line, after it is checked, with the
+	// parsed entry (nil when the line is not a JSON object), the line and the byte
+	// offset it starts at. Verify does not call it. The line is only valid during
+	// the call.
+	OnEntry func(e Entry, line []byte, off int64)
 }
 
 // AnchorResult describes one anchor entry.
@@ -94,7 +99,13 @@ func Verify(entries []Entry, lines [][]byte, opt VerifyOptions) *Report {
 // over MaxLineBytes, is returned without a report.
 func VerifyReader(r io.Reader, opt VerifyOptions) (*Report, error) {
 	v := newVerifier(opt)
-	if err := scanLines(r, func(line []byte) { v.add(parseEntry(line), line) }); err != nil {
+	if err := EachLine(r, func(line []byte, off int64) {
+		e := ParseEntry(line)
+		v.add(e, line)
+		if opt.OnEntry != nil {
+			opt.OnEntry(e, line, off)
+		}
+	}); err != nil {
 		return nil, err
 	}
 	return v.finish(), nil

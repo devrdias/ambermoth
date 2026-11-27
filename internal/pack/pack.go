@@ -3,6 +3,7 @@ package pack
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -53,14 +54,14 @@ type Options struct {
 	Generator     string
 	Client        *http.Client
 
-	verify verifyFunc // nil means ledger.Verify; tests count the calls
+	verify verifyFunc // nil means ledger.VerifyReader; tests count the calls
 }
 
-type verifyFunc func([]ledger.Entry, [][]byte, ledger.VerifyOptions) *ledger.Report
+type verifyFunc func(io.Reader, ledger.VerifyOptions) (*ledger.Report, error)
 
 func (o Options) verifier() verifyFunc {
 	if o.verify == nil {
-		return ledger.Verify
+		return ledger.VerifyReader
 	}
 	return o.verify
 }
@@ -114,97 +115,234 @@ func Build(ctx context.Context, s *ledger.Store, o Options) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := o.filter()
-	sp, err := src.chooseSpan(f)
+	defer src.close()
+	sp, err := src.chooseSpan()
 	if err != nil {
 		return nil, err
 	}
-	c := src.cutAt(sp)
-	files, disclosed, err := c.files(s, src.entries, o.Disclose)
+	c, err := src.cutAt(sp, o.filter())
+	if err != nil {
+		return nil, err
+	}
+	files, disclosed, err := c.files(s, src, o.Disclose)
 	if err != nil {
 		return nil, err
 	}
 	m := c.manifest(s, o, disclosed)
-	if err := addReadables(files, m, c.summary(f), src.segmentReport(c)); err != nil {
+	if err := addReadables(files, m, c.summary, c.report); err != nil {
 		return nil, err
 	}
-	names, err := addManifest(ctx, files, m, o)
+	names, err := addManifest(ctx, files, c.segmentFile(), m, o)
 	if err != nil {
 		return nil, err
 	}
-	return m, writeZip(o.Out, names, files, s.Now())
+	return m, writeZipFrom(o.Out, names, s.Now(), func(name string, w io.Writer) error {
+		if name == segmentName {
+			return src.writeSegment(c.span, w)
+		}
+		_, err := w.Write(files[name])
+		return err
+	})
 }
 
-// source is a ledger read for packing, verified from genesis.
+// source is a ledger file read for packing, verified from genesis. It keeps an
+// index of the ledger, not the entries; the lines are read again from the file
+// when a pack needs them.
 type source struct {
-	entries []ledger.Entry
-	lines   [][]byte
-	full    *ledger.Report
-	check   ledger.VerifyOptions
-	verify  verifyFunc
+	f      *os.File
+	size   int64 // the part of the file read: later appends are not part of the pack
+	ix     *index
+	full   *ledger.Report
+	check  ledger.VerifyOptions
+	verify verifyFunc
 }
 
 func readSource(s *ledger.Store, o Options) (*source, error) {
-	entries, lines, err := ledger.ReadFile(s.LedgerPath())
+	f, err := os.Open(s.LedgerPath())
 	if err != nil {
 		return nil, err
 	}
-	check := ledger.VerifyOptions{AnchorDir: anchorDir(s), CheckAnchor: ops.AnchorVerifier(o.Roots, o.AllowUnpinned)}
-	full := o.verifier()(entries, lines, check)
-	if !full.OK() || !full.StartsAtGenesis {
-		return nil, fmt.Errorf("the ledger does not verify; refusing to build a pack from it:\n  %s", strings.Join(full.Errors, "\n  "))
+	src, err := newSource(f, s, o)
+	if err != nil {
+		_ = f.Close()
+		return nil, err
 	}
-	return &source{entries: entries, lines: lines, full: full, check: check, verify: o.verifier()}, nil
+	return src, nil
 }
 
-// chooseSpan picks the segment for the calls f matches.
-func (src *source) chooseSpan(f report.Filter) (span, error) {
-	firstCall, lastCall, ok := callRange(src.entries, f)
+func newSource(f *os.File, s *ledger.Store, o Options) (*source, error) {
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	src := &source{f: f, size: fi.Size(), verify: o.verifier(),
+		check: ledger.VerifyOptions{AnchorDir: anchorDir(s), CheckAnchor: ops.AnchorVerifier(o.Roots, o.AllowUnpinned)}}
+	src.ix = &index{}
+	flt := o.filter()
+	opt := src.check
+	opt.OnEntry = func(e ledger.Entry, _ []byte, off int64) { src.ix.add(e, off, flt) }
+	if src.full, err = src.verify(src.section(0, src.size), opt); err != nil {
+		return nil, err
+	}
+	src.ix.end(src.size)
+	if !src.full.OK() || !src.full.StartsAtGenesis {
+		return nil, fmt.Errorf("the ledger does not verify; refusing to build a pack from it:\n  %s", strings.Join(src.full.Errors, "\n  "))
+	}
+	return src, nil
+}
+
+func (src *source) close() { _ = src.f.Close() }
+
+func (src *source) section(from, to int64) *io.SectionReader {
+	return io.NewSectionReader(src.f, from, to-from)
+}
+
+// chooseSpan picks the segment for the calls the filter matched.
+func (src *source) chooseSpan() (span, error) {
+	firstCall, lastCall, ok := src.ix.callRange()
 	if !ok {
 		return span{}, errors.New("no calls in the selected period")
 	}
-	last := lastRelevantSeq(src.entries, f, firstCall, lastCall)
-	return selectSpan(src.full.Anchors, len(src.entries), firstCall, last), nil
+	last := src.ix.lastRelevantSeq(firstCall, lastCall)
+	return selectSpan(src.full.Anchors, src.ix.entries(), firstCall, last), nil
 }
 
-// segmentReport is the verification report for the segment c carries. When the
-// segment is the whole ledger that is the report readSource already has.
-func (src *source) segmentReport(c cut) *ledger.Report {
-	if c.start == 0 && c.end == int64(len(src.entries)-1) {
-		return src.full
-	}
-	return src.verify(c.seg, c.segLines, src.check)
-}
+// segmentName is the zip entry holding the segment's lines.
+const segmentName = "ledger/segment.jsonl"
 
 // cut is the part of the ledger a pack carries: the segment, and the context
-// entries before it.
+// entries before it. The segment's lines stay in the ledger file; the cut
+// holds what was learned reading them.
 type cut struct {
 	span
-	genesis    []byte
-	seg        []ledger.Entry
-	segLines   [][]byte
-	ctxEntries []ledger.Entry
-	ctxLines   [][]byte
+	genesis     []byte
+	context     []byte // the context entries' lines, each ended by a newline
+	contextN    int
+	first, last ledger.Entry // the segment's first and last entry
+	anchors     []ledger.Entry
+	segSum      string // sha256 of the segment file
+	segBytes    int64
+	summary     *report.Summary // context entries, then the segment
+	report      *ledger.Report  // verification of the segment
 }
 
-func (src *source) cutAt(sp span) cut {
-	ctxEntries, ctxLines := contextEntries(src.entries, src.lines, sp.start)
-	return cut{span: sp, genesis: append(append([]byte{}, src.lines[0]...), '\n'),
-		seg: src.entries[sp.start : sp.end+1], segLines: src.lines[sp.start : sp.end+1],
-		ctxEntries: ctxEntries, ctxLines: ctxLines}
-}
-
-// files returns the ledger files of the pack, with the anchor tokens and the
-// disclosure keys, and the seqs disclosed.
-func (c cut) files(s *ledger.Store, entries []ledger.Entry, disclose []int64) (map[string][]byte, []int64, error) {
-	files := map[string][]byte{"ledger/genesis.json": c.genesis, "ledger/segment.jsonl": joinLines(c.segLines)}
-	if len(c.ctxLines) > 0 {
-		files["ledger/context.jsonl"] = joinLines(c.ctxLines)
+// cutAt reads genesis, the context before sp and the segment itself, once.
+func (src *source) cutAt(sp span, f report.Filter) (*cut, error) {
+	c := &cut{span: sp}
+	g, _, err := src.lineAt(0)
+	if err != nil {
+		return nil, err
 	}
-	if err := addAnchorTokens(files, anchorDir(s), c.seg); err != nil {
+	c.genesis = append(g, '\n')
+	z := report.NewSummarizer(f)
+	if err := src.readContext(c, z); err != nil {
+		return nil, err
+	}
+	if err := src.scanSegment(c, z); err != nil {
+		return nil, err
+	}
+	c.summary = z.Summary()
+	return c, nil
+}
+
+// scanSegment feeds the segment to z, and measures the file the pack will hold.
+// It also gives the verification report of the segment: when the segment is the
+// whole ledger that is the report readSource already has, and when not the
+// segment is verified in the same read.
+func (src *source) scanSegment(c *cut, z *report.Summarizer) error {
+	h := sha256.New()
+	n := 0
+	see := func(e ledger.Entry, line []byte, _ int64) {
+		_, _ = h.Write(line)
+		_, _ = io.WriteString(h, "\n")
+		c.segBytes += int64(len(line)) + 1
+		z.Add(e)
+		if n == 0 {
+			c.first = e
+		}
+		c.last = e
+		n++
+		if e.Type() == ledger.TypeAnchor {
+			c.anchors = append(c.anchors, e)
+		}
+	}
+	err := src.readSegment(c, see)
+	c.segSum = "sha256:" + hex.EncodeToString(h.Sum(nil))
+	return err
+}
+
+func (src *source) readSegment(c *cut, see func(e ledger.Entry, line []byte, off int64)) error {
+	r := src.section(src.ix.bounds(c.start, c.end))
+	if c.start == 0 && c.end == int64(src.ix.entries()-1) {
+		c.report = src.full
+		return ledger.EachLine(r, func(line []byte, off int64) { see(ledger.ParseEntry(line), line, off) })
+	}
+	opt := src.check
+	opt.OnEntry = see
+	var err error
+	c.report, err = src.verify(r, opt)
+	return err
+}
+
+// lineAt reads entry i, line and parsed, from the file.
+func (src *source) lineAt(i int64) ([]byte, ledger.Entry, error) {
+	from, to := src.ix.bounds(i, i)
+	buf := make([]byte, to-from)
+	if _, err := src.f.ReadAt(buf, from); err != nil {
 		return nil, nil, err
 	}
-	disclosed, err := addDisclosures(files, s, entries, c.seg, disclose)
+	_, line, _ := bufio.ScanLines(buf, true)
+	return line, ledger.ParseEntry(line), nil
+}
+
+// readContext adds the key events, code links and reconciliations recorded
+// before the segment starts to c and to z.
+func (src *source) readContext(c *cut, z *report.Summarizer) error {
+	for i := int64(1); i < c.start; i++ {
+		if src.ix.slots[i].kind != kindContext {
+			continue
+		}
+		line, e, err := src.lineAt(i)
+		if err != nil {
+			return err
+		}
+		z.Add(e)
+		c.context = append(append(c.context, line...), '\n')
+		c.contextN++
+	}
+	return nil
+}
+
+// writeSegment writes the segment's lines to w, each ended by a newline.
+func (src *source) writeSegment(sp span, w io.Writer) error {
+	bw := bufio.NewWriter(w)
+	err := ledger.EachLine(src.section(src.ix.bounds(sp.start, sp.end)), func(line []byte, _ int64) {
+		_, _ = bw.Write(line) // a write error sticks and comes out of Flush
+		_ = bw.WriteByte('\n')
+	})
+	if err != nil {
+		return err
+	}
+	return bw.Flush()
+}
+
+// segmentFile is the manifest record of the segment, which is not in memory.
+func (c *cut) segmentFile() File {
+	return File{Path: segmentName, SHA256: c.segSum, Bytes: c.segBytes}
+}
+
+// files returns the small files of the pack that hold ledger data, with the
+// anchor tokens and the disclosure keys, and the seqs disclosed. The segment
+// is written from the ledger file when the zip is.
+func (c *cut) files(s *ledger.Store, src *source, disclose []int64) (map[string][]byte, []int64, error) {
+	files := map[string][]byte{"ledger/genesis.json": c.genesis}
+	if c.contextN > 0 {
+		files["ledger/context.jsonl"] = c.context
+	}
+	if err := addAnchorTokens(files, anchorDir(s), c.anchors); err != nil {
+		return nil, nil, err
+	}
+	disclosed, err := src.addDisclosures(files, s, c.span, disclose)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,61 +350,20 @@ func (c cut) files(s *ledger.Store, entries []ledger.Entry, disclose []int64) (m
 }
 
 // manifest describes the cut, without the file list.
-func (c cut) manifest(s *ledger.Store, o Options, disclosed []int64) *Manifest {
-	last := c.seg[len(c.seg)-1]
+func (c *cut) manifest(s *ledger.Store, o Options, disclosed []int64) *Manifest {
 	m := &Manifest{
 		Format: Format, Generator: o.Generator, Created: ledger.FormatTime(s.Now()), LedgerID: s.LedgerID,
 		Account: o.Account, ProviderFilter: o.Provider,
 		Period: Period{From: o.From.Format("2006-01-02"), To: o.To.AddDate(0, 0, -1).Format("2006-01-02")},
-		Segment: Segment{FirstSeq: c.seg[0].Seq(), LastSeq: last.Seq(), FirstPrevHash: c.seg[0].Str("prev_hash"),
-			LastHash: last.Hash(), StartAnchored: c.startAnchored, EndAnchored: c.endAnchored},
-		ContextEntries: len(c.ctxLines), Disclosed: disclosed, Totals: report.Summarize(c.seg, o.filter()).Totals,
+		Segment: Segment{FirstSeq: c.first.Seq(), LastSeq: c.last.Seq(), FirstPrevHash: c.first.Str("prev_hash"),
+			LastHash: c.last.Hash(), StartAnchored: c.startAnchored, EndAnchored: c.endAnchored},
+		// Context entries are never calls or amendments, so they add nothing to the totals.
+		ContextEntries: c.contextN, Disclosed: disclosed, Totals: c.summary.Totals,
 	}
 	if m.Account == "" {
 		m.Account = "(account not specified)"
 	}
 	return m
-}
-
-// summary aggregates the context and the segment together.
-func (c cut) summary(f report.Filter) *report.Summary {
-	return report.Summarize(append(append([]ledger.Entry{}, c.ctxEntries...), c.seg...), f)
-}
-
-// callRange returns the first and last seq of the calls f matches.
-func callRange(entries []ledger.Entry, f report.Filter) (first, last int64, ok bool) {
-	first, last = -1, -1
-	for _, e := range entries {
-		if !f.Match(e) {
-			continue
-		}
-		if first < 0 {
-			first = e.Seq()
-		}
-		last = e.Seq()
-	}
-	return first, last, first >= 0
-}
-
-// lastRelevantSeq extends the period's last call to the last amendment that
-// re-tags a matched call in first..last, so the segment includes it.
-func lastRelevantSeq(entries []ledger.Entry, f report.Filter, first, last int64) int64 {
-	relevant := last
-	for _, e := range entries[last:] {
-		if e.Type() == ledger.TypeAmendment && amendsMatchedCall(entries, f, e, first, last) {
-			relevant = e.Seq()
-		}
-	}
-	return relevant
-}
-
-func amendsMatchedCall(entries []ledger.Entry, f report.Filter, am ledger.Entry, first, last int64) bool {
-	for q := max(am.Int("target_from"), first); q <= min(am.Int("target_to"), last); q++ {
-		if f.Match(entries[q]) {
-			return true
-		}
-	}
-	return false
 }
 
 // span is the segment of the ledger a pack carries.
@@ -308,21 +405,6 @@ func selectSpan(anchors []ledger.AnchorResult, n int, firstCall, lastRelevant in
 	return sp
 }
 
-// contextEntries returns the key events, code links and reconciliations
-// recorded before the segment starts.
-func contextEntries(entries []ledger.Entry, lines [][]byte, start int64) ([]ledger.Entry, [][]byte) {
-	var es []ledger.Entry
-	var ls [][]byte
-	for i := int64(1); i < start; i++ {
-		switch entries[i].Type() {
-		case ledger.TypeKeyEvent, ledger.TypeCodeLink, ledger.TypeReconciliation:
-			es = append(es, entries[i])
-			ls = append(ls, lines[i])
-		}
-	}
-	return es, ls
-}
-
 // addAnchorTokens adds the TSA token of every anchor entry in seg.
 func addAnchorTokens(files map[string][]byte, dir string, seg []ledger.Entry) error {
 	for _, e := range seg {
@@ -348,17 +430,21 @@ func plainFileName(name string) bool {
 }
 
 // addDisclosures adds the per-entry keys of the disclosed calls, which must be
-// call entries inside seg, and returns their seqs, each once, ascending.
-func addDisclosures(files map[string][]byte, s *ledger.Store, entries, seg []ledger.Entry, seqs []int64) ([]int64, error) {
+// call entries inside sp, and returns their seqs, each once, ascending.
+func (src *source) addDisclosures(files map[string][]byte, s *ledger.Store, sp span, seqs []int64) ([]int64, error) {
 	if len(seqs) == 0 {
 		return []int64{}, nil
 	}
 	keys := map[string]string{}
 	for _, q := range seqs {
-		if q < seg[0].Seq() || q > seg[len(seg)-1].Seq() || entries[q].Type() != ledger.TypeCall {
+		if q < sp.start || q > sp.end || src.ix.slots[q].kind != kindCall {
 			return nil, fmt.Errorf("--disclose %d: not a call entry inside the pack segment", q)
 		}
-		keys[strconv.FormatInt(q, 10)] = hex.EncodeToString(ledger.EntryKey(s.MasterKey, entries[q].Str("salt_id")))
+		_, e, err := src.lineAt(q)
+		if err != nil {
+			return nil, err
+		}
+		keys[strconv.FormatInt(q, 10)] = hex.EncodeToString(ledger.EntryKey(s.MasterKey, e.Str("salt_id")))
 	}
 	b, err := json.MarshalIndent(keys, "", "  ")
 	if err != nil {
@@ -387,15 +473,21 @@ func addReadables(files map[string][]byte, m *Manifest, ctxSummary *report.Summa
 	return nil
 }
 
-// addManifest lists every file in m, adds manifest.json and, when a TSA is
-// configured, its timestamp, and returns the zip order: manifest first.
-func addManifest(ctx context.Context, files map[string][]byte, m *Manifest, o Options) ([]string, error) {
-	names := make([]string, 0, len(files)+2)
+// addManifest lists every file in m, the segment's record seg among them, adds
+// manifest.json and, when a TSA is configured, its timestamp, and returns the
+// zip order: manifest first.
+func addManifest(ctx context.Context, files map[string][]byte, seg File, m *Manifest, o Options) ([]string, error) {
+	names := make([]string, 0, len(files)+3)
 	for n := range files {
 		names = append(names, n)
 	}
+	names = append(names, seg.Path)
 	sort.Strings(names)
 	for _, n := range names {
+		if n == seg.Path {
+			m.Files = append(m.Files, seg)
+			continue
+		}
 		m.Files = append(m.Files, File{Path: n, SHA256: ledger.SHA256Bytes(files[n]), Bytes: int64(len(files[n]))})
 	}
 	mb, err := json.MarshalIndent(m, "", "  ")
@@ -419,16 +511,15 @@ func addManifest(ctx context.Context, files map[string][]byte, m *Manifest, o Op
 
 func anchorDir(s *ledger.Store) string { return s.Dir + "/" + ledger.AnchorDir }
 
-func joinLines(ls [][]byte) []byte {
-	var b bytes.Buffer
-	for _, l := range ls {
-		b.Write(l)
-		b.WriteByte('\n')
-	}
-	return b.Bytes()
+func writeZip(path string, names []string, files map[string][]byte, modified time.Time) error {
+	return writeZipFrom(path, names, modified, func(name string, w io.Writer) error {
+		_, err := w.Write(files[name])
+		return err
+	})
 }
 
-func writeZip(path string, names []string, files map[string][]byte, modified time.Time) error {
+// writeZipFrom writes the zip, calling fill to write each entry's contents.
+func writeZipFrom(path string, names []string, modified time.Time, fill func(name string, w io.Writer) error) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
@@ -436,11 +527,10 @@ func writeZip(path string, names []string, files map[string][]byte, modified tim
 	zw := zip.NewWriter(f)
 	for _, n := range names {
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: n, Method: zip.Deflate, Modified: modified})
-		if err != nil {
-			_ = f.Close()
-			return err
+		if err == nil {
+			err = fill(n, w)
 		}
-		if _, err := w.Write(files[n]); err != nil {
+		if err != nil {
 			_ = f.Close()
 			return err
 		}

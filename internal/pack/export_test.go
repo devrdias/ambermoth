@@ -1,6 +1,10 @@
 package pack
 
-import "github.com/devrdias/ambermoth/internal/ledger"
+import (
+	"io"
+
+	"github.com/devrdias/ambermoth/internal/ledger"
+)
 
 // Exported for the black-box tests in this directory.
 var WriteZip = writeZip
@@ -16,9 +20,12 @@ var RenderLetter = renderLetter
 // CountVerify returns o with every ledger verification Build runs recorded
 // in calls, as the number of entries each one covered.
 func CountVerify(o Options, calls *[]int) Options {
-	o.verify = func(es []ledger.Entry, lines [][]byte, opt ledger.VerifyOptions) *ledger.Report {
-		*calls = append(*calls, len(es))
-		return ledger.Verify(es, lines, opt)
+	o.verify = func(r io.Reader, opt ledger.VerifyOptions) (*ledger.Report, error) {
+		rep, err := ledger.VerifyReader(r, opt)
+		if err == nil {
+			*calls = append(*calls, rep.Entries)
+		}
+		return rep, err
 	}
 	return o
 }
