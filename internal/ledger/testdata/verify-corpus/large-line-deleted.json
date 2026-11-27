@@ -1,0 +1,218 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [
+    {
+      "gen_time": "2026-03-01T05:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 300,
+      "signer": "Test TSA",
+      "target_seq": 299,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-01T10:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 600,
+      "signer": "Test TSA",
+      "target_seq": 599,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-01T15:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 900,
+      "signer": "Test TSA",
+      "target_seq": 899,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-01T20:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 1200,
+      "signer": "Test TSA",
+      "target_seq": 1199,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-02T01:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 1500,
+      "signer": "Test TSA",
+      "target_seq": 1499,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-02T06:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 1800,
+      "signer": "Test TSA",
+      "target_seq": 1799,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-02T11:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 2100,
+      "signer": "Test TSA",
+      "target_seq": 2099,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-02T16:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 2400,
+      "signer": "Test TSA",
+      "target_seq": 2399,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-02T21:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 2700,
+      "signer": "Test TSA",
+      "target_seq": 2699,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-03T02:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 3000,
+      "signer": "Test TSA",
+      "target_seq": 2999,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-03T07:00:30Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 3300,
+      "signer": "Test TSA",
+      "target_seq": 3299,
+      "tsa": "test"
+    }
+  ],
+  "dropped_calls": 58,
+  "entries": 3399,
+  "entries_lagging_over_24h": 0,
+  "errors": [
+    "seq 1701 follows seq 1699: sequence is not contiguous (entry removed or inserted)",
+    "seq 1701: prev_hash does not match previous entry_hash (chain broken)"
+  ],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 11,
+      "entry_hash": "sha256:12a647712fea960496caad87c4317fc48285d3ecd70b9eba12acd9cd58fe5459",
+      "prev_hash": "sha256:525924c489a884c1319d70c42286ce1e1039c97d1521d3a8c17523543ae5b590",
+      "seq": 401,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T06:41:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 9,
+      "entry_hash": "sha256:f2f80e13ba73578fdff3ec84f6f1a435e08a1cadf9c545092401d27047ada101",
+      "prev_hash": "sha256:4193b20917aa8c03f44016de47b173d0d612b526e10d26752146707826aa690b",
+      "seq": 802,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T13:22:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:5c05d05e777fdb7456567e3ca4a07e10b815c2180ca2171bafbdc99d0ec01aba",
+      "prev_hash": "sha256:150d26ebe682fd25ae7b5232ed9641e7ee020beb1656563968c4ee54c554dcd3",
+      "seq": 1203,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T20:03:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 5,
+      "entry_hash": "sha256:5f398225b67bba4468de001f5bb90241c8f30f5e788895f6b489f8908af55091",
+      "prev_hash": "sha256:271c37a73064987fe38d92749e4c7bf0d943626594656cda5034812413a660c0",
+      "seq": 1604,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-02T02:44:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 3,
+      "entry_hash": "sha256:61dbf52027f8b13c83581776299be7221405c1698a2980e03f4e845c27aca0e6",
+      "prev_hash": "sha256:415b7d6930a43b3ea45f704dbc828003119a274cc3425b54c60cb0d9add47908",
+      "seq": 2005,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-02T09:25:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 1,
+      "entry_hash": "sha256:ac799ca0e1018bbba692cca844b9b5752d10ecd002fc543016bdad0d65dbe5df",
+      "prev_hash": "sha256:00cb9dbc0eea0650f3b1852c79cf4e904cd30ab71000edec84cb17eeddfaaa52",
+      "seq": 2406,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-02T16:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 12,
+      "entry_hash": "sha256:373c753bb980fcaf856767171d9d086537918a772c72cd589f55835d1adcc493",
+      "prev_hash": "sha256:46c568338337a628a3f3195022ab291dce31edba9c5e5eda54c61aebb4aa9758",
+      "seq": 2807,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-02T22:47:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 10,
+      "entry_hash": "sha256:a3191450eff8b4a5a7506cee09be8bdcf0a61a28ae91b9050fe6abb348f67239",
+      "prev_hash": "sha256:3a067c6d467c7d895ee767b50ded80e3e01302aba90b29b4dd968933ec0efffa",
+      "seq": 3208,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-03T05:28:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:9e4a4a0a0a687667e312a88fa7a2a792590f2f990e1aa378789167357f1ca4e9",
+  "last_anchored_seq": 3299,
+  "last_seq": 3399,
+  "max_anchor_lag_seconds": 18030,
+  "max_anchor_lag_seq": 0,
+  "starts_at_genesis": true,
+  "unanchored_tail": 99,
+  "warnings": []
+}

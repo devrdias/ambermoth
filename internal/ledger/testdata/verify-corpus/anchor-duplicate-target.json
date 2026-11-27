@@ -1,0 +1,50 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [
+    {
+      "gen_time": "2026-03-01T00:08:00Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 8,
+      "signer": "Test TSA",
+      "target_seq": 7,
+      "tsa": "test"
+    },
+    {
+      "gen_time": "2026-03-01T00:09:00Z",
+      "ok": true,
+      "pinned": true,
+      "seq": 9,
+      "signer": "Test TSA",
+      "target_seq": 7,
+      "tsa": "test"
+    }
+  ],
+  "dropped_calls": 7,
+  "entries": 10,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:4d03f867bf98677316774fa2e93e33c543ff4411f1a6aeaa174f2d868f4af993",
+  "last_anchored_seq": 7,
+  "last_seq": 9,
+  "max_anchor_lag_seconds": 480,
+  "max_anchor_lag_seq": 0,
+  "starts_at_genesis": true,
+  "unanchored_tail": 0,
+  "warnings": []
+}

@@ -130,6 +130,7 @@ examples/              # runnable examples
 - Table-driven with a named `t.Run` per case; the case type is named
   (`type verifyCase struct{…}`) and cases are named by behaviour (`"rejects a reordered entry"`).
   `t.Parallel()` where nothing is shared.
+- Golden files live in `testdata/`, are rewritten with a `-update` flag and are read in the diff.
 - Hand-written fakes for ports, honouring their contract (errors, `ctx` cancellation). A test TSA
   lives in `internal/tsa/tsatest`; tests that need `openssl` say so.
 - Unit tests: no real network (use `httptest`), no files outside `t.TempDir()`, no wall clock

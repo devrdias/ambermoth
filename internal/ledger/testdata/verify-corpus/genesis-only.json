@@ -1,0 +1,18 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 0,
+  "entries": 1,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 0,
+  "gaps": [],
+  "head_hash": "sha256:9191deb2adcf35dfc5c44a8102907f7bd9554e8d2a9e9f9c2fb648374783a0ca",
+  "last_anchored_seq": -1,
+  "last_seq": 0,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "starts_at_genesis": true,
+  "unanchored_tail": 1,
+  "warnings": []
+}
