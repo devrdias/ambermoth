@@ -153,12 +153,22 @@ Common fields on every entry:
 | `latency_ms` | Request start → last response byte |
 | `key_fp` | §3.4, or `""` if the call carried no key |
 | `purpose` | Tag at the time of the call (§5) |
-| `note` | Optional free text (`X-Provenance-Note`), truncated to 512 bytes |
-| `git_ref` | Optional commit (`X-Provenance-Git-Ref`), truncated to 256 bytes |
+| `note` | Optional free text (`X-Provenance-Note`), at most 512 bytes in total |
+| `git_ref` | Optional commit (`X-Provenance-Git-Ref`), at most 256 bytes |
 | `transport` | Present only for upgraded connections: `websocket` (§6.5) |
 | `salt_id`, `prompt_hmac`, `output_hmac` | §3.3 |
 | `bytes_in`, `bytes_out` | Body sizes |
 | `client_aborted` | bool — client disconnected before the response finished |
+
+Text taken from request headers or the path is written as valid UTF-8: each
+invalid byte sequence becomes U+FFFD. A value over its limit is cut on a
+character boundary and ends in `…[truncated]`, which counts towards the limit.
+
+When the purpose header is invalid (§5), the proxy adds `invalid purpose header:
+<value>` to the note, after the caller's own note and a space. The whole note
+still fits in 512 bytes. The purpose text is guaranteed 256 bytes (or all of
+it, if shorter), the caller's note gets the rest; the fixed prefix is never
+cut, only the value.
 
 ### 4.3 `amendment` — re-tag or annotate earlier entries
 

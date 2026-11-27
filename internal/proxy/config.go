@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Upstream is a provider endpoint the proxy forwards to.
@@ -93,7 +94,7 @@ func ValidPurpose(p string) bool {
 	if p == "untagged" {
 		return true
 	}
-	if strings.HasPrefix(p, "x-") && len(p) > 2 && len(p) <= 64 {
+	if strings.HasPrefix(p, "x-") && len(p) > 2 && len(p) <= 64 && utf8.ValidString(p) {
 		return true
 	}
 	for _, t := range Taxonomy() {

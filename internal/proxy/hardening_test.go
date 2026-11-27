@@ -137,7 +137,7 @@ func TestEnqueueAfterCloseIsSafe(t *testing.T) {
 func TestNoteIsCapped(t *testing.T) {
 	long := strings.Repeat("é", 1000) // 2000 bytes
 	got := proxy.TruncateUTF8(long, proxy.MaxNoteBytes)
-	if len(got) > proxy.MaxNoteBytes+len("…[truncated]") || !strings.HasSuffix(got, "…[truncated]") {
+	if len(got) > proxy.MaxNoteBytes || !strings.HasSuffix(got, "…[truncated]") {
 		t.Fatalf("not capped: %d bytes", len(got))
 	}
 	if !strings.HasPrefix(got, "é") || strings.ContainsRune(got, '�') {

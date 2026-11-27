@@ -25,6 +25,9 @@ const (
 	maxRespCapture = 4 << 20 // bytes of non-streaming response kept for usage parsing
 	maxNoteBytes   = 512     // X-Provenance-Note is truncated to this
 	maxGitRefBytes = 256     // X-Provenance-Git-Ref is truncated to this
+
+	truncMarker       = "…[truncated]"
+	invalidPurposeMsg = "invalid purpose header: "
 )
 
 // Proxy records every call it forwards.
@@ -174,7 +177,7 @@ func (p *Proxy) resolvePurpose(c *call) {
 // untagged and a note, so a bad header never rejects the call.
 func (c *call) checkHeaderPurpose() {
 	if !ValidPurpose(c.purpose) {
-		c.note = strings.TrimSpace(c.note + " invalid purpose header: " + c.purpose)
+		c.note = invalidPurposeNote(c.note, c.purpose)
 		c.purpose = "untagged"
 		return
 	}
@@ -221,16 +224,35 @@ func (p *Proxy) maybeEnroll(fp, upstream string) {
 	}
 }
 
-// truncateUTF8 cuts s to at most n bytes without splitting a UTF-8 sequence.
+// cleanUTF8 replaces invalid UTF-8 with U+FFFD. The canonical writer refuses
+// an invalid string, and a failed batch write drops every entry in the batch.
+func cleanUTF8(s string) string { return strings.ToValidUTF8(s, "\uFFFD") }
+
+// truncateUTF8 returns s as valid UTF-8 of at most n bytes, cut on a character
+// boundary. The truncation marker counts towards n.
 func truncateUTF8(s string, n int) string {
+	s = cleanUTF8(s)
 	if len(s) <= n {
 		return s
 	}
-	i := n
+	i := max(n-len(truncMarker), 0)
 	for i > 0 && !utf8.RuneStart(s[i]) {
 		i--
 	}
-	return s[:i] + "…[truncated]"
+	return s[:i] + truncMarker
+}
+
+// invalidPurposeNote adds the rejected header value to the caller's note. The
+// result stays within maxNoteBytes. The text about the purpose keeps up to half
+// of that, the caller's note the rest, so neither can push the other out.
+func invalidPurposeNote(note, value string) string {
+	msg := invalidPurposeMsg + cleanUTF8(value)
+	if note == "" {
+		return truncateUTF8(msg, maxNoteBytes)
+	}
+	const sep = 1
+	note = truncateUTF8(note, maxNoteBytes-sep-min(len(msg), maxNoteBytes/2))
+	return note + " " + truncateUTF8(msg, maxNoteBytes-sep-len(note))
 }
 
 // teeBody hashes and partially captures the request body as it is forwarded.
@@ -453,7 +475,7 @@ func (p *Proxy) record(c *call, status int, stream bool, u *usage, outMAC []byte
 	e := ledger.Entry{
 		"type": ledger.TypeCall, "ts": ledger.FormatTime(c.start),
 		"provider": c.upstream, "api_style": c.style, "endpoint": endpointClass(c.path),
-		"method": c.method, "path": c.path, "model": model, "stream": stream || ri.Stream,
+		"method": c.method, "path": cleanUTF8(c.path), "model": model, "stream": stream || ri.Stream,
 		"status": status, "tokens_in": u.In, "tokens_out": u.Out, "cached_in": u.Cached,
 		"usage_reported": u.Reported, "latency_ms": p.store.Now().Sub(c.start).Milliseconds(),
 		"key_fp": c.keyFP, "purpose": c.purpose, "salt_id": c.saltID,
