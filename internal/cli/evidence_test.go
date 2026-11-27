@@ -180,7 +180,7 @@ func TestVerifyPackCommand(t *testing.T) {
 	t.Run("fails when the JSON cannot be written", func(t *testing.T) {
 		t.Parallel()
 		code, errOut := h.runWithStdout(failingWriter{}, "verify-pack", good, "--json")
-		if code != cli.ExitFail || !strings.Contains(errOut, "error: "+errBrokenPipe.Error()) {
+		if code != cli.ExitFail || !strings.Contains(errOut, "error: writing output: "+errBrokenPipe.Error()) {
 			t.Errorf("exit %d, stderr %q; want exit 1 and the write error", code, errOut)
 		}
 	})

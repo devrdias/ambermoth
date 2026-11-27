@@ -27,7 +27,7 @@ func (a *App) cmdAnchor(ctx context.Context, args []string) error {
 	}
 	es, err := ops.Anchor(ctx, s, tsas, nil)
 	for _, e := range es {
-		_, _ = fmt.Fprintf(a.env.Stdout, "anchored seq %d (%s) via %s at %s\n", e.Int("target_seq"), ledger.ShortFP(e.Str("target_hash")), e.Str("tsa"), e.Str("gen_time"))
+		_, _ = fmt.Fprintf(a.out, "anchored seq %d (%s) via %s at %s\n", e.Int("target_seq"), ledger.ShortFP(e.Str("target_hash")), e.Str("tsa"), e.Str("gen_time"))
 	}
 	return err
 }
@@ -57,11 +57,11 @@ func (a *App) cmdVerify(_ context.Context, args []string) error {
 	}
 	r := ledger.Verify(es, lines, ledger.VerifyOptions{AnchorDir: adir, CheckAnchor: ops.AnchorVerifier(roots, *allowUnpinned)})
 	if *asJSON {
-		if err := writeJSON(a.env.Stdout, r); err != nil {
+		if err := writeJSON(a.out, r); err != nil {
 			return err
 		}
 	} else {
-		printLedgerReport(a.env.Stdout, r)
+		printLedgerReport(a.out, r)
 	}
 	if !r.OK() {
 		return exitError(ExitFail)

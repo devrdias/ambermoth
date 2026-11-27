@@ -445,6 +445,10 @@ pack.zip
   disclosures/entry-keys.json   only with --disclose: {seq: entry_key hex}
 ```
 
+`manifest.disclosed` lists each disclosed seq once, ascending. Earlier versions
+could list a seq twice; the verifier compares the list with the keys file as a
+set and accepts that.
+
 ### 9.3 `verify-pack`
 
 `ambermoth verify-pack pack.zip [--report report.html] [--tsa-ca root.pem] [--allow-unpinned-tsa]`

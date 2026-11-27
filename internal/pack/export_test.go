@@ -8,3 +8,5 @@ var CodeLinkFor = codeLinkFor
 var RenderSummary = renderSummary
 
 var AddAnchorTokens = addAnchorTokens
+
+var RenderLetter = renderLetter

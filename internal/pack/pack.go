@@ -4,6 +4,7 @@ package pack
 import (
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -325,11 +327,10 @@ func plainFileName(name string) bool {
 }
 
 // addDisclosures adds the per-entry keys of the disclosed calls, which must be
-// call entries inside seg, and returns their seqs in order.
+// call entries inside seg, and returns their seqs, each once, ascending.
 func addDisclosures(files map[string][]byte, s *ledger.Store, entries, seg []ledger.Entry, seqs []int64) ([]int64, error) {
-	disclosed := []int64{}
 	if len(seqs) == 0 {
-		return disclosed, nil
+		return []int64{}, nil
 	}
 	keys := map[string]string{}
 	for _, q := range seqs {
@@ -337,15 +338,15 @@ func addDisclosures(files map[string][]byte, s *ledger.Store, entries, seg []led
 			return nil, fmt.Errorf("--disclose %d: not a call entry inside the pack segment", q)
 		}
 		keys[strconv.FormatInt(q, 10)] = hex.EncodeToString(ledger.EntryKey(s.MasterKey, entries[q].Str("salt_id")))
-		disclosed = append(disclosed, q)
 	}
 	b, err := json.MarshalIndent(keys, "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	files["disclosures/entry-keys.json"] = append(b, '\n')
-	sort.Slice(disclosed, func(i, j int) bool { return disclosed[i] < disclosed[j] })
-	return disclosed, nil
+	disclosed := slices.Clone(seqs)
+	slices.Sort(disclosed)
+	return slices.Compact(disclosed), nil
 }
 
 // addReadables adds the human-readable files.
@@ -492,7 +493,7 @@ func renderSummary(m *Manifest, s *report.Summary, v *ledger.Report, banner *Ver
 		"fmtT": func(t time.Time) string { return ledger.FormatTime(t) },
 		"lag":  ledger.FormatLag,
 	}
-	t, err := template.New("summary").Funcs(funcs).Parse(summaryTmpl)
+	t, err := template.New("summary").Option("missingkey=error").Funcs(funcs).Parse(summaryTmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -524,21 +525,26 @@ func renderSummary(m *Manifest, s *report.Summary, v *ledger.Report, banner *Ver
 	return buf.Bytes(), err
 }
 
+// noFirstCommit stands in for the day a code link's history begins when the
+// link has none (a path with no commits). It is a placeholder for the sender,
+// like the other bracketed parts of the letter.
+const noFirstCommit = "[date not recorded]"
+
+// renderLetter fills letterTmpl. Every key the template reads has a value, and
+// a missing key is an error, so the letter can never print "<no value>".
 func renderLetter(m *Manifest, s *report.Summary) ([]byte, error) {
-	t := ttemplate.Must(ttemplate.New("letter").Parse(letterTmpl))
+	t := ttemplate.Must(ttemplate.New("letter").Option("missingkey=error").Parse(letterTmpl))
 	rs := rows(m.Totals)
 	d := map[string]any{"Provider": m.ProviderFilter, "Account": m.Account, "From": m.Period.From, "To": m.Period.To,
-		"Calls": fmtN(m.Totals.All.Calls), "Keys": len(s.Keys)}
+		"Calls": fmtN(m.Totals.All.Calls), "Keys": len(s.Keys),
+		"TopPurpose": "[purpose]", "TopShare": "[share]", "TopLink": "", "TopLinkSince": ""}
 	if d["Provider"] == "" {
 		d["Provider"] = "[provider]"
 	}
 	if len(rs) > 0 {
 		d["TopPurpose"], d["TopShare"] = rs[0].Name, rs[0].Share
 		if link, since := codeLinkFor(s, rs[0].Name); link != "" {
-			d["TopLink"] = link
-			if since != "" {
-				d["TopLinkSince"] = since
-			}
+			d["TopLink"], d["TopLinkSince"] = link, cmp.Or(since, noFirstCommit)
 		}
 	}
 	var b bytes.Buffer

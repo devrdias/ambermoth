@@ -19,6 +19,11 @@ import (
 var version = "dev"
 
 func main() {
+	// Without this, a write to a closed stdout or stderr kills the process with
+	// SIGPIPE before the CLI sees an error. Taking the signal makes the write
+	// fail with EPIPE instead, which is what the tests see too. Nobody reads the
+	// channel; it only has to exist.
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	app := cli.New(cli.Env{
 		Stdin:      os.Stdin,

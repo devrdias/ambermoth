@@ -171,3 +171,41 @@ func TestCLIWorkflow(t *testing.T) {
 		t.Errorf("version: %s", out)
 	}
 }
+
+// A reader that goes away ('ambermoth report | head -0') must give the same
+// result as a failing writer in the CLI tests: exit 1, nothing on stderr, and
+// no death by SIGPIPE.
+func TestBrokenStdoutPipeExitsWithFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the binary")
+	}
+	work := t.TempDir()
+	bin := filepath.Join(work, "ambermoth")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	dir := filepath.Join(work, "ledger")
+	if out, err := exec.Command(bin, "init", "--dir", dir).CombinedOutput(); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	defer w.Close()
+	var stderr strings.Builder
+	c := exec.Command(bin, "report", "--dir", dir)
+	c.Stdout, c.Stderr = w, &stderr
+	err = c.Run()
+	ee, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("err = %v, want an exit error", err)
+	}
+	if ws, _ := ee.Sys().(syscall.WaitStatus); ws.Signaled() {
+		t.Fatalf("killed by %v, want a plain exit", ws.Signal())
+	}
+	if ee.ExitCode() != 1 || stderr.Len() != 0 {
+		t.Errorf("exit %d, stderr %q; want exit 1 and nothing on stderr", ee.ExitCode(), stderr.String())
+	}
+}

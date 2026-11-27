@@ -41,7 +41,7 @@ func (a *App) cmdInit(_ context.Context, args []string) error {
 	if err := writeDefaultConfig(filepath.Join(*dir, ledger.ConfigFile)); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
-	_, _ = fmt.Fprintf(a.env.Stdout, `Ledger created in %s
+	_, _ = fmt.Fprintf(a.out, `Ledger created in %s
   ledger id: %s
   master key: %s/secret.key  (back it up; keep it private — it never leaves this machine)
 
@@ -207,7 +207,7 @@ func (a *App) cmdKey(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(a.env.Stdout, "recorded key %s: %s (seq %d)\n", action, e.Str("key_fp"), e.Seq())
+	_, _ = fmt.Fprintf(a.out, "recorded key %s: %s (seq %d)\n", action, e.Str("key_fp"), e.Seq())
 	return nil
 }
 
@@ -247,7 +247,7 @@ func (a *App) cmdLink(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(a.env.Stdout, "linked %s → %s @ %.12s (history since %s, %d commits; seq %d)\n", *purpose, e.Str("repo"),
+	_, _ = fmt.Fprintf(a.out, "linked %s → %s @ %.12s (history since %s, %d commits; seq %d)\n", *purpose, e.Str("repo"),
 		e.Str("commit"), e.Str("first_commit_ts"), e.Int("commit_count"), e.Seq())
 	return nil
 }
@@ -280,6 +280,6 @@ func (a *App) cmdAmend(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(a.env.Stdout, "amendment recorded (seq %d) for entries %d–%d\n", e.Seq(), *from, *to)
+	_, _ = fmt.Fprintf(a.out, "amendment recorded (seq %d) for entries %d–%d\n", e.Seq(), *from, *to)
 	return nil
 }

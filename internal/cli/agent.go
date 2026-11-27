@@ -32,7 +32,7 @@ func (a *App) cmdAgentPrompt(_ context.Context, args []string) error {
 	if *machine {
 		name = "machine.md"
 	}
-	return prompts.ExecuteTemplate(a.env.Stdout, name, promptData{
+	return prompts.ExecuteTemplate(a.out, name, promptData{
 		Dir:      *dir,
 		Purposes: strings.Join(proxy.Taxonomy(), ", "),
 	})

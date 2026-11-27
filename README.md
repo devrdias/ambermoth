@@ -96,6 +96,12 @@ Ledger verification: OK
   anchors:   2, anchored through seq 3, 0 entries after the last anchor
 ```
 
+Exit codes: 0 on success, 1 on an error or a failed verification, 2 on a bad command line. A command whose
+output can't be written to stdout (a full disk, a closed pipe) exits 1 and says so on stderr, so
+`verify` never exits 0 when its report went nowhere. A closed pipe (`ambermoth report | head -1`) also
+exits 1, without a message. If the command had already done its work (`anchor`, `pack`), the message says
+so; don't run it again.
+
 FreeTSA and DigiCert roots are pinned in the binary. Tokens from any other authority fail unless the
 reviewer passes `--tsa-ca root.pem` or `--allow-unpinned-tsa`.
 
