@@ -38,6 +38,7 @@ Setup and capture
   key enroll|rotate|revoke   record a key event (key read from stdin or --key-env)
   link                       bind a purpose to a git repository / commit
   amend                      re-tag or annotate earlier calls (itself recorded)
+  agent-prompt               print setup instructions for a coding agent (--machine for this machine)
 
 Integrity
   anchor                     RFC 3161-timestamp the chain head
@@ -89,7 +90,7 @@ func New(env Env) *App {
 		"init": a.cmdInit, "proxy": a.cmdProxy, "key": a.cmdKey, "link": a.cmdLink,
 		"amend": a.cmdAmend, "anchor": a.cmdAnchor, "verify": a.cmdVerify, "pack": a.cmdPack,
 		"verify-pack": a.cmdVerifyPack, "check-sample": a.cmdCheckSample, "reconcile": a.cmdReconcile,
-		"alerts": a.cmdAlerts, "report": a.cmdReport,
+		"alerts": a.cmdAlerts, "report": a.cmdReport, "agent-prompt": a.cmdAgentPrompt,
 	}
 	return a
 }

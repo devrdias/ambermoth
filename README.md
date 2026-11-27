@@ -62,6 +62,10 @@ client.messages.create(..., extra_headers={"X-Provenance-Purpose": "eval-regress
 To try it without API keys, run `go run ./examples/mockprovider` (a fake OpenAI/Anthropic on :9999) and
 point `.ambermoth/config.json` at `http://127.0.0.1:9999`.
 
+Using a coding agent? `ambermoth agent-prompt` prints instructions to paste into it: it wires up the base
+URLs, asks you for each call site's purpose and checks the result. `--machine` sets up the proxy as a
+service for every program on the machine instead.
+
 ## Usage
 
 ```sh
