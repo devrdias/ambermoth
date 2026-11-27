@@ -1,0 +1,39 @@
+#!/bin/sh
+# Rejects commit messages that don't follow Conventional Commits.
+# CI runs this same script on PR titles and commits (.github/workflows/commits.yml),
+# so a commit that passes here passes there. No dependencies: POSIX sh, grep, sed.
+# Enable once per clone with:  make hooks   (or: git config core.hooksPath .githooks)
+
+msg_file="$1"
+types="feat|fix|perf|refactor|build|docs|test|ci|chore|style|revert"
+
+# Drop comment lines and trailing blank lines, as git does with the default cleanup.
+msg=$(sed -e '/^#/d' "$msg_file")
+header=$(printf '%s\n' "$msg" | sed -n '1p')
+second=$(printf '%s\n' "$msg" | sed -n '2p')
+
+# Messages git writes itself, and autosquash markers, are allowed as they are.
+case "$header" in
+  "Merge "*|"Revert \""*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+fail() {
+  printf '\n  ✗ commit message rejected: %s\n\n' "$1" >&2
+  printf '    got:      %s\n' "$header" >&2
+  printf '    expected: <type>(<optional scope>)!: <summary>\n' >&2
+  printf '    types:    %s\n' "$(echo "$types" | sed 's/|/, /g')" >&2
+  printf '    example:  feat(proxy): record WebSocket sessions\n' >&2
+  printf '              fix: stop the writer panicking on close\n' >&2
+  printf '              feat!: new pack format (add a BREAKING CHANGE: footer)\n\n' >&2
+  exit 1
+}
+
+[ -n "$header" ] || fail "empty message"
+printf '%s\n' "$header" | grep -Eq "^($types)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ]" \
+  || fail "the first line must be '<type>(<scope>): <summary>' with a lowercase type and scope"
+summary=$(printf '%s\n' "$header" | sed -E 's/^[^:]*: //')
+printf '%s\n' "$summary" | grep -Eq '^[A-Z]' && fail "start the summary in lowercase (\"add\", not \"Add\")"
+case "$summary" in *.) fail "no full stop at the end of the summary" ;; esac
+[ "${#header}" -le 100 ] || fail "the first line is ${#header} characters; keep it to 100"
+[ -z "$second" ] || fail "leave a blank line between the first line and the body"
+exit 0

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Evidence pack — {{.M.Account}} — {{.M.Period.From}} to {{.M.Period.To}}</title>
+<style>
+  :root { --ink:#1b1f24; --muted:#5b6470; --line:#d9dde3; --bg:#fbfbf9; --ok:#1f7a4d; --warn:#9a5b00; --bad:#b42318; }
+  body { font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 { font-size: 18px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .box { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 14px 18px; margin: 12px 0; }
+  .limits { border-left: 4px solid var(--warn); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .bar { height: 8px; background: #3b5bdb; border-radius: 4px; }
+  @media print { body { background: #fff; } h2 { break-after: avoid; } table { break-inside: avoid; } }
+</style>
+</head>
+<body>
+{{with .Banner}}<div class="box" style="border-left:4px solid {{if .OK}}var(--ok){{else}}var(--bad){{end}};margin-bottom:28px">
+<strong>{{if .OK}}<span class="ok">Verified</span>{{else}}<span class="bad">Verification FAILED</span>{{end}}</strong> by {{.Verifier}} at {{.At}}. This report was rendered by the verifier from the ledger entries themselves, not by the sender.
+{{if .SummaryNote}}<br><span style="color:var(--muted);font-size:13px">{{.SummaryNote}}</span>{{end}}
+{{if .Errors}}<ul class="bad">{{range .Errors}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{if .Warnings}}<ul class="warn">{{range .Warnings}}<li>{{.}}</li>{{end}}</ul>{{end}}
+</div>{{end}}
+<h1>AI API usage evidence pack</h1>
+<p class="sub">{{.M.Account}} · {{.M.Period.From}} → {{.M.Period.To}}{{if .M.ProviderFilter}} · provider: {{.M.ProviderFilter}}{{end}} · generated {{.M.Created}} · format {{.M.Format}}</p>
+
+<div class="box limits">
+<strong>Read this first.</strong> This pack is a contemporaneous, tamper-evident record of API usage. It proves the entries below existed, in this order, no later than the independent timestamps, and have not been altered since. It does <em>not</em> prove that no other, unlogged usage occurred, or that a declared purpose was truthful. Full statement in §8 and <code>LIMITS.md</code>.
+</div>
+
+<h2>1. Cover</h2>
+<table>
+<tr><th>Ledger ID</th><td class="mono">{{.M.LedgerID}}</td></tr>
+<tr><th>Period</th><td>{{.M.Period.From}} to {{.M.Period.To}} (UTC, inclusive)</td></tr>
+<tr><th>Providers / models</th><td>{{range $i, $p := .Providers}}{{if $i}}, {{end}}{{$p}}{{end}} — {{len .Models}} model(s): {{range $i, $m := .Models}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}</td></tr>
+<tr><th>Ledger segment</th><td>seq {{.M.Segment.FirstSeq}} – {{.M.Segment.LastSeq}} · start {{if .M.Segment.StartAnchored}}<span class="ok">anchored</span>{{else}}genesis{{end}} · end {{if .M.Segment.EndAnchored}}<span class="ok">anchored</span>{{else}}<span class="warn">not anchored (self-attested tail)</span>{{end}}</td></tr>
+<tr><th>Integrity at generation</th><td>{{if .V.OK}}<span class="ok">chain verified</span>{{else}}<span class="bad">FAILED</span>{{end}} · {{len .V.Anchors}} anchor(s) · verify yourself: <code>ambermoth verify-pack pack.zip</code></td></tr>
+</table>
+<div class="grid">
+  <div class="stat"><b>{{fmtN .T.All.Calls}}</b><span>API calls</span></div>
+  <div class="stat"><b>{{fmtN .T.All.TokensIn}}</b><span>input tokens</span></div>
+  <div class="stat"><b>{{fmtN .T.All.TokensOut}}</b><span>output tokens</span></div>
+  <div class="stat"><b>{{len .T.ByPurpose}}</b><span>declared purposes</span></div>
+</div>
+
+<h2>2. Coverage statement</h2>
+<table>
+<tr><th>Key fingerprint</th><th>Provider</th><th class="n">Calls in period</th><th>Status</th></tr>
+{{range .S.Keys}}<tr><td class="mono">{{short .FP}}</td><td>{{.Provider}}</td><td class="n">{{fmtN .Calls}}</td><td>{{if .Enrolled}}<span class="ok">enrolled</span>{{else}}<span class="warn">not enrolled</span>{{end}}</td></tr>
+{{end}}</table>
+<p><strong>Recording gaps:</strong> {{if .S.Gaps}}<span class="warn">{{len .S.Gaps}} gap(s)</span> — the proxy failed open and could not record some calls:{{else}}<span class="ok">none recorded</span>.{{end}}</p>
+{{if .S.Gaps}}<table><tr><th>Seq</th><th>From</th><th>Until</th><th class="n">Calls not recorded</th><th>Cause</th></tr>
+{{range .S.Gaps}}<tr><td>{{.Seq}}</td><td>{{.Str "since"}}</td><td>{{.Str "until"}}</td><td class="n">{{.Int "dropped"}}</td><td>{{.Str "cause"}}</td></tr>{{end}}</table>{{end}}
+<p><strong>Billing reconciliation:</strong> {{if .S.Reconciliations}}{{range .S.Reconciliations}}{{.Str "provider"}} {{.Str "period_from"}} → {{.Str "period_to"}}: {{if eq (.Str "result") "match"}}<span class="ok">matches</span>{{else}}<span class="warn">mismatch on {{.Int "days_mismatched"}} day(s)</span>{{end}} (ledger {{fmtN (.Int "ledger_tokens_in")}} in / export {{fmtN (.Int "export_tokens_in")}} in; export file <code>{{short (.Str "source_sha256")}}</code>)<br>{{end}}{{else}}<span class="warn">not performed</span> — run <code>ambermoth reconcile</code> against the provider's usage export to show that no spend bypassed the ledger.{{end}}</p>
+
+<h2>3. Itemised usage by purpose</h2>
+<table>
+<tr><th>Purpose</th><th class="n">Calls</th><th class="n">Share</th><th></th><th class="n">Tokens in</th><th class="n">Tokens out</th><th class="n">Errors</th><th>Active</th></tr>
+{{range .Purposes}}<tr><td><strong>{{.Name}}</strong>{{if .B.Retagged}}<br><span class="warn" style="font-size:12px">{{.B.Retagged}} re-tagged (see §3b)</span>{{end}}</td><td class="n">{{fmtN .B.Calls}}</td><td class="n">{{.Share}}%</td><td style="width:120px"><div class="bar" style="width:{{.Share}}%"></div></td><td class="n">{{fmtN .B.TokensIn}}</td><td class="n">{{fmtN .B.TokensOut}}</td><td class="n">{{.B.Errors}}</td><td style="font-size:12px">{{day .B.First}} → {{day .B.Last}}</td></tr>
+{{end}}</table>
+{{range .Purposes}}
+<div class="box">
+<strong>{{.Name}}</strong> — endpoints: {{range $k, $v := .B.ByEndpoint}}{{$k}} ({{fmtN $v}}) {{end}}<br>
+models: {{range $k, $v := .B.ByModel}}<code>{{$k}}</code> ({{fmtN $v}}) {{end}}<br>
+calls per day: {{range $k, $v := .B.ByDay}}<span class="mono">{{$k}}:{{$v}}</span> {{end}}<br>
+<span style="color:var(--muted);font-size:13px">exemplars (hashes only):</span>
+<table>{{range .B.Exemplars}}<tr><td class="mono">seq {{.Seq}}</td><td class="mono">{{.Ts}}</td><td class="mono">{{short .PromptHMAC}}</td><td class="mono">{{short .OutputHMAC}}</td></tr>{{end}}</table>
+</div>
+{{end}}
+{{if .S.Amendments}}
+<h3>3b. Amendments (re-tags and annotations)</h3>
+<p>Originals are never modified. Each amendment is itself a ledger entry.</p>
+<table><tr><th>Seq</th><th>When</th><th>Targets</th><th>New purpose</th><th>By</th><th>Reason</th></tr>
+{{range .S.Amendments}}<tr><td>{{.Seq}}</td><td>{{.Str "ts"}}</td><td>{{.Int "target_from"}}–{{.Int "target_to"}}</td><td>{{.Str "new_purpose"}}</td><td>{{.Str "by"}}</td><td>{{.Str "reason"}} {{.Str "annotation"}}</td></tr>{{end}}</table>
+{{end}}
+
+<h2>4. Flagged-pattern explanation</h2>
+{{with .Top}}<p>The largest traffic class in this period is <strong>{{.Name}}</strong> ({{.Share}}% of calls, {{fmtN .B.Calls}} calls). If the review was triggered by high-volume, repetitive or narrow traffic, this is the most likely source.</p>{{end}}
+<p style="color:var(--muted)">The sender's own explanation of this traffic is in <code>letter-template.md</code>. It is their account, not verified data; the code provenance in §5 is what supports it.</p>
+
+<h2>5. Code provenance</h2>
+{{if .S.CodeLinks}}<table><tr><th>Purpose</th><th>Repository</th><th>Commit</th><th>History since</th><th class="n">Commits</th><th>Recorded</th></tr>
+{{range .S.CodeLinks}}<tr><td>{{.Str "purpose"}}{{if lt .Seq $.M.Segment.FirstSeq}}<br><span class="warn" style="font-size:12px">before the segment · self-attested</span>{{end}}</td><td class="mono">{{.Str "repo"}}{{with .Str "path"}}/{{.}}{{end}}</td><td class="mono">{{printf "%.12s" (.Str "commit")}}{{if .Bool "dirty"}} <span class="warn">(dirty)</span>{{end}}</td><td>{{day (.Str "first_commit_ts")}}</td><td class="n">{{.Int "commit_count"}}</td><td>{{.Str "ts"}}</td></tr>{{end}}</table>
+{{else}}<p class="warn">No code links recorded. Run <code>ambermoth link --purpose eval-regression --repo path/to/harness</code> (ideally in CI) so traffic classes map to code.</p>{{end}}
+
+<h2>6. Key history</h2>
+{{if .S.KeyEvents}}<table><tr><th>When</th><th>Action</th><th>Key</th><th>Provider</th><th>Label / reason</th></tr>
+{{range .S.KeyEvents}}<tr><td>{{.Str "ts"}}{{if lt .Seq $.M.Segment.FirstSeq}}<br><span class="warn" style="font-size:12px">before the segment · self-attested</span>{{end}}</td><td>{{.Str "action"}}</td><td class="mono">{{short (.Str "key_fp")}}</td><td>{{.Str "provider"}}</td><td>{{.Str "label"}}{{with .Str "reason"}} — {{.}}{{end}}{{with .Str "replaced_by"}} → <span class="mono">{{short .}}</span>{{end}}</td></tr>{{end}}</table>
+{{else}}<p>No key events recorded.</p>{{end}}
+<p style="color:var(--muted);font-size:13px">Entries marked "self-attested" come from before this pack's ledger segment: each is internally consistent, but this pack cannot prove where it sat in the chain. Fingerprints are SHA-256 of the API key. The provider can compute the same fingerprint for keys it issued.</p>
+
+<h2>7. Integrity bundle</h2>
+<table>
+<tr><th>Segment</th><td class="mono">ledger/segment.jsonl — seq {{.M.Segment.FirstSeq}}…{{.M.Segment.LastSeq}}, head {{short .M.Segment.LastHash}}</td></tr>
+<tr><th>Unanchored tail</th><td>{{.V.UnanchoredTail}} entr{{if eq .V.UnanchoredTail 1}}y{{else}}ies{{end}}</td></tr>
+<tr><th>Largest anchor lag</th><td>{{lag .V.MaxAnchorLagSeconds}}{{if ge .V.MaxAnchorLagSeq 0}} (seq {{.V.MaxAnchorLagSeq}}){{end}} · {{.V.EntriesLaggingOver24h}} entr{{if eq .V.EntriesLaggingOver24h 1}}y{{else}}ies{{end}} anchored more than 24h after their own timestamp<br><span style="color:var(--muted);font-size:12px">An entry is only proven to exist from the TSA time of its first anchor. Small lags mean the record was sealed as it was written.</span></td></tr>
+</table>
+<table><tr><th>Anchor</th><th>Covers through seq</th><th>TSA</th><th>TSA time</th><th>Signer</th></tr>
+{{range .V.Anchors}}<tr><td>{{.Seq}}</td><td>{{.TargetSeq}}</td><td class="mono">{{.TSA}}</td><td>{{if .OK}}{{fmtT .GenTime}}{{else}}<span class="bad">{{.Error}}</span>{{end}}</td><td style="font-size:12px">{{.Signer}}</td></tr>{{end}}</table>
+{{if .V.Warnings}}<p class="warn">Warnings: {{range .V.Warnings}}{{.}}; {{end}}</p>{{end}}
+
+<h2>8. Limits</h2>
+<div class="box limits"><pre style="white-space:pre-wrap;font:inherit;margin:0">{{.Limits}}</pre></div>
+</body>
+</html>

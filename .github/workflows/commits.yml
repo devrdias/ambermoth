@@ -1,0 +1,42 @@
+name: commits
+# Releases are versioned from commit messages, so pull requests must follow
+# Conventional Commits (https://www.conventionalcommits.org). Both jobs run
+# .githooks/commit-msg, the same POSIX script that checks commits locally.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  # A squash merge uses the PR title as the commit message on main.
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: check the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title"
+          sh .githooks/commit-msg "$RUNNER_TEMP/title"
+
+  # A merge commit or rebase keeps each commit, so each one is checked too.
+  commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: check every commit in the PR
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for c in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            git log -1 --format=%B "$c" > "$RUNNER_TEMP/msg"
+            sh .githooks/commit-msg "$RUNNER_TEMP/msg" || { echo "  in commit $c"; status=1; }
+          done
+          exit $status

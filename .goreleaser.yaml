@@ -1,0 +1,56 @@
+# Builds the release binaries and publishes the GitHub release for the tag the
+# CI release job created (svu picks the version from Conventional Commits).
+version: 2
+project_name: ambermoth
+
+builds:
+  - id: ambermoth
+    main: ./cmd/ambermoth
+    binary: ambermoth
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+# Release notes, grouped by Conventional Commit type. Types that do not change
+# the program are left out.
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Breaking changes
+      regexp: '^(\w+ )?[a-z]+(\([^)]*\))?!:'
+      order: 0
+    - title: Features
+      regexp: '^(\w+ )?feat(\([^)]*\))?:'
+      order: 1
+    - title: Bug fixes
+      regexp: '^(\w+ )?fix(\([^)]*\))?:'
+      order: 2
+    - title: Performance
+      regexp: '^(\w+ )?perf(\([^)]*\))?:'
+      order: 3
+    - title: Refactoring
+      regexp: '^(\w+ )?refactor(\([^)]*\))?:'
+      order: 4
+    - title: Build
+      regexp: '^(\w+ )?build(\([^)]*\))?:'
+      order: 5
+  filters:
+    exclude:
+      - '^(\w+ )?(docs|test|ci|chore|style)(\([^)]*\))?:'
+      - '^(\w+ )?Merge pull request'

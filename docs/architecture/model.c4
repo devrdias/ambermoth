@@ -1,0 +1,116 @@
+// ambermoth model. Mirrors docs/SPEC.md — keep the two in sync.
+model {
+
+  developer = actor 'Developer / founder' {
+    description 'Runs the proxy, tags traffic, builds evidence packs when asked to explain usage.'
+  }
+  reviewer = actor 'Reviewer' {
+    description 'Provider trust-and-safety analyst, or an enterprise customer\'s security reviewer. Trusts nobody; runs the verifier.'
+  }
+
+  app = external 'Customer AI application' {
+    description 'Any app using the official OpenAI / Anthropic / OpenAI-compatible SDKs. Only its base URL changes.'
+  }
+  ci = external 'CI / eval harness repo' {
+    technology 'git'
+    description 'The code that produces a traffic class (e.g. the regression benchmark).'
+  }
+  provider = external 'Model provider API' {
+    technology 'OpenAI · Anthropic · OpenAI-compatible'
+    description 'Receives the caller\'s own requests and keys, unchanged.'
+  }
+  tsa = external 'RFC 3161 Time Stamping Authority' {
+    technology 'e.g. freetsa.org, timestamp.digicert.com'
+    description 'Signs (hash, time) tokens. Never sees ledger content.'
+  }
+  usage_export = external 'Provider usage / billing export' {
+    technology 'CSV'
+  }
+
+  ambermoth = system 'ambermoth' {
+    description '''
+      Tamper-evident ledger of LLM API usage and offline-verifiable evidence packs.
+      One static Go binary, standard library only.
+    '''
+
+    proxy = container 'Recording proxy' {
+      technology 'Go net/http/httputil'
+      description 'Pass-through reverse proxy. Streams SSE unbuffered, fails open.'
+
+      router = component 'Router & header handling' {
+        description 'Maps /<upstream>/… to the provider; reads and strips X-Provenance-* headers; fingerprints the key.'
+      }
+      tagger = component 'Purpose resolver' {
+        description 'Header → route rule → per-key default → config default → untagged.'
+      }
+      hasher = component 'Body tee + HMAC' {
+        description 'Per-entry key from a random salt; HMACs request/response bytes as they stream. Parses usage from JSON or SSE.'
+      }
+      writer = component 'Ledger writer' {
+        description 'Single goroutine, batched appends, fsync ≤200 ms. Drops never block; writes a gap entry on recovery.'
+      }
+    }
+
+    cli = container 'CLI' {
+      technology 'Go'
+      description 'init · key · link · amend · anchor · reconcile · alerts · report · pack'
+
+      anchorer = component 'Anchor worker' {
+        description 'Timestamps the chain head (hash only); stores the token; appends an anchor entry.'
+      }
+      packer = component 'Pack builder' {
+        description 'Selects an anchored segment, aggregates totals, renders summary.html + letter, zips.'
+      }
+      ops = component 'Ledger operations' {
+        description 'Key events, code links (git), amendments, reconciliation, alerts.'
+      }
+    }
+
+    verifier = container 'Verifier' {
+      technology 'Go, same binary, offline'
+      description 'verify · verify-pack · check-sample. Re-checks chain, CMS signatures and recomputes totals.'
+    }
+
+    ledger = store 'ledger.jsonl' {
+      technology 'Canonical JSON lines, append-only, flock'
+      description 'Hash-chained entries: genesis, call, amendment, key_event, code_link, anchor, gap, reconciliation.'
+    }
+    secretkey = store 'secret.key' {
+      technology '32-byte HMAC master key, 0600'
+      description 'Customer-held. Never leaves the machine; genesis commits to it.'
+    }
+    anchors = store 'anchors/*.tsr' {
+      technology 'DER TimeStampResp'
+    }
+  }
+
+  pack = external 'Evidence pack (zip)' {
+    technology 'ambermoth-pack/1'
+    description 'manifest + segment + tokens + summary.html + LIMITS + letter template. Sent by the developer, checked by the reviewer.'
+  }
+
+  // ---- relationships -------------------------------------------------------
+  developer -> ambermoth.cli 'runs'
+  developer -> pack 'sends to reviewer'
+  reviewer -> ambermoth.verifier 'runs on the pack'
+  ambermoth.verifier -> pack 'verifies offline'
+
+  app -[secret]-> ambermoth.proxy.router 'API calls (own keys)' { technology 'HTTPS / SSE' }
+  ambermoth.proxy.router -> ambermoth.proxy.tagger 'resolve purpose'
+  ambermoth.proxy.router -[secret]-> ambermoth.proxy.hasher 'request/response bytes'
+  ambermoth.proxy.hasher -[secret]-> provider 'forwards unchanged' { technology 'HTTPS' }
+  ambermoth.proxy.hasher -> ambermoth.proxy.writer 'call entry (hashes + usage)'
+  ambermoth.proxy.writer -> ambermoth.ledger 'append + fsync'
+  ambermoth.proxy.hasher -> ambermoth.secretkey 'derive per-entry key'
+
+  ambermoth.cli.anchorer -[hashonly]-> tsa 'TimeStampReq (head hash)'
+  ambermoth.cli.anchorer -> ambermoth.anchors 'store token'
+  ambermoth.cli.anchorer -> ambermoth.ledger 'append anchor entry'
+  ambermoth.cli.ops -> ambermoth.ledger 'append key / link / amendment / reconciliation'
+  ambermoth.cli.ops -> ci 'reads commit history'
+  ambermoth.cli.ops -> usage_export 'reconciles against'
+  ambermoth.cli.packer -> ambermoth.ledger 'reads segment'
+  ambermoth.cli.packer -> ambermoth.anchors 'includes tokens'
+  ambermoth.cli.packer -> pack 'writes'
+  ambermoth.cli.packer -[hashonly]-> tsa 'timestamps manifest'
+}

@@ -1,0 +1,61 @@
+views {
+
+  view index {
+    title 'System context'
+    description 'Who talks to ambermoth, and what crosses each boundary.'
+    include developer, reviewer, app, ci, provider, tsa, usage_export, pack
+    include ambermoth
+    style ambermoth { color primary }
+    autoLayout LeftRight
+  }
+
+  view containers of ambermoth {
+    title 'Containers'
+    description 'Everything ships as one Go binary; the ledger is plain files.'
+    include *
+    include -> ambermoth.* ->
+    autoLayout TopBottom 80 60
+  }
+
+  view proxy of ambermoth.proxy {
+    title 'Proxy components'
+    description 'Red edges carry live API keys or content; nothing red ever reaches disk.'
+    include *
+    include -> ambermoth.proxy.* ->
+    autoLayout LeftRight
+  }
+
+  view cli of ambermoth.cli {
+    title 'CLI components'
+    include *
+    include -> ambermoth.cli.* ->
+    autoLayout LeftRight
+  }
+
+  dynamic view record-call {
+    title 'Recording one API call'
+    app -> ambermoth.proxy.router 'POST /anthropic/v1/messages + X-Provenance-Purpose'
+    ambermoth.proxy.router -> ambermoth.proxy.tagger 'resolve purpose, fingerprint key'
+    ambermoth.proxy.router -> ambermoth.proxy.hasher 'tee request body'
+    ambermoth.proxy.hasher -> provider 'forward (headers stripped)'
+    ambermoth.proxy.hasher <- provider 'stream SSE'
+    app <- ambermoth.proxy.hasher 'stream bytes unchanged, flushed immediately'
+    ambermoth.proxy.hasher -> ambermoth.proxy.writer 'on EOF: call entry (HMACs, tokens, purpose)'
+    ambermoth.proxy.writer -> ambermoth.ledger 'append batch, fsync'
+  }
+
+  dynamic view dispute {
+    title 'Answering a distillation flag'
+    variant sequence
+    developer -> ambermoth.cli.ops 'reconcile --csv usage-export.csv'
+    ambermoth.cli.ops -> ambermoth.ledger 'reconciliation entry'
+    developer -> ambermoth.cli.anchorer 'anchor'
+    ambermoth.cli.anchorer -> tsa 'head hash'
+    ambermoth.cli.anchorer <- tsa 'signed token'
+    developer -> ambermoth.cli.packer 'pack --from … --to … --provider anthropic'
+    ambermoth.cli.packer -> pack 'zip: segment, tokens, summary, LIMITS, letter'
+    developer -> pack 'sends to the provider'
+    reviewer -> ambermoth.verifier 'verify-pack pack.zip --tsa-ca root.pem'
+    ambermoth.verifier -> pack 'hashes, chain, CMS signatures, recomputed totals'
+  }
+}

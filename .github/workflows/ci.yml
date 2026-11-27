@@ -1,0 +1,86 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.22' }
+      - run: make check
+      - run: make rules
+      - run: GOOS=darwin go build ./... && GOOS=windows go build ./...
+
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: '22' }
+      - run: npx -y likec4@1.61.1 validate --json --no-layout --max-warnings 0 docs/architecture
+
+  # Checks the release config on every change, so a broken config fails here, not at release time.
+  release-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.22' }
+      - uses: goreleaser/goreleaser-action@v7
+        with: { version: '~> v2', args: check }
+      - uses: goreleaser/goreleaser-action@v7
+        with: { version: '~> v2', args: build --snapshot --clean }
+      - run: ./dist/ambermoth_linux_amd64_v1/ambermoth version
+
+  # On main: svu reads the Conventional Commits since the last tag and picks the
+  # next version (fix -> patch, feat -> minor, ! or BREAKING CHANGE -> major;
+  # other types release nothing). If there is one, the job tags it and
+  # GoReleaser builds the binaries, writes the notes and publishes the GitHub
+  # release. Nothing is committed to the repository. No Node involved.
+  release:
+    needs: [test, architecture, release-check]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: { group: release, cancel-in-progress: false }
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      # Release tools need a current Go; the module itself still targets 1.22 (test job).
+      - uses: actions/setup-go@v7
+        with: { go-version: stable }
+      - name: next version
+        id: version
+        run: |
+          next=$(go run github.com/caarlos0/svu/v3@v3.4.4 next)
+          current=$(go run github.com/caarlos0/svu/v3@v3.4.4 current)
+          # svu prints the current version when nothing calls for a release,
+          # and v0.0.0 before the first fix or feat.
+          if [ "$next" = "v0.0.0" ] || [ "$(git tag --list "$next")" = "$next" ]; then
+            echo "No release: no fix, feat or breaking change since $current."
+          else
+            echo "Releasing $next (previous: $current)."
+            echo "tag=$next" >> "$GITHUB_OUTPUT"
+          fi
+      - name: tag
+        if: steps.version.outputs.tag != ''
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag "$TAG"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$TAG"
+      - uses: goreleaser/goreleaser-action@v7
+        if: steps.version.outputs.tag != ''
+        with: { version: '~> v2', args: release --clean }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

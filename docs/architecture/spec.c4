@@ -1,0 +1,39 @@
+// Vocabulary for the ambermoth architecture model (LikeC4 DSL).
+specification {
+  element actor {
+    notation "Person"
+    style { shape person; color slate }
+  }
+  element system {
+    notation "Software system"
+    style { color primary }
+  }
+  element external {
+    notation "External system"
+    style { color gray }
+  }
+  element container {
+    notation "Container"
+    style { color blue }
+  }
+  element component {
+    notation "Component"
+    style { shape component; color indigo }
+  }
+  element store {
+    notation "File on disk"
+    style { shape storage; color green }
+  }
+
+  relationship hashonly {
+    notation "Sends hashes only"
+    color green
+    line dashed
+  }
+  relationship secret {
+    notation "Carries API keys / content"
+    color red
+  }
+
+  tag trust-boundary
+}
