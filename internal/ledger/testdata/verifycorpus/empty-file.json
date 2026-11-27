@@ -1,0 +1,23 @@
+{
+  "ReadError": "",
+  "GapSeqs": null,
+  "Report": {
+    "entries": 0,
+    "first_seq": 0,
+    "last_seq": 0,
+    "head_hash": "",
+    "starts_at_genesis": false,
+    "errors": [
+      "ledger is empty"
+    ],
+    "warnings": [],
+    "anchors": [],
+    "last_anchored_seq": -1,
+    "unanchored_tail": 0,
+    "max_anchor_lag_seconds": -1,
+    "max_anchor_lag_seq": -1,
+    "entries_lagging_over_24h": 0,
+    "dropped_calls": 0,
+    "anchor_checks_skipped": false
+  }
+}

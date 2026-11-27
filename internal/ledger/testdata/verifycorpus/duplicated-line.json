@@ -1,0 +1,61 @@
+{
+  "ReadError": "",
+  "GapSeqs": [
+    6,
+    6
+  ],
+  "Report": {
+    "entries": 21,
+    "first_seq": 0,
+    "last_seq": 19,
+    "head_hash": "sha256:be8d413b52561d9d7444b6f1af1c0651e48c96a6e42b14594dc734682af54fc1",
+    "starts_at_genesis": true,
+    "errors": [
+      "seq 6 follows seq 6: sequence is not contiguous (entry removed or inserted)",
+      "seq 6: prev_hash does not match previous entry_hash (chain broken)"
+    ],
+    "warnings": [
+      "seq 13: timestamp goes backwards (2026-03-01T10:00:00.000Z \u003c 2026-03-01T12:00:00.000Z)",
+      "seq 18: timestamp goes backwards (2026-03-01T15:00:00.000Z \u003c 2026-03-01T17:00:00.000Z)",
+      "seq 5: ts 2026-03-01T05:00:00.000Z is later than the TSA time 2026-03-01T03:00:00.000Z that anchors it (writer clock ahead?)",
+      "seq 4: ts 2026-03-01T04:00:00.000Z is later than the TSA time 2026-03-01T03:00:00.000Z that anchors it (writer clock ahead?)",
+      "9 entries were first anchored more than 24h after their own timestamps (largest gap 44h0m0s, seq 6): they are only proven to exist from their anchor time on"
+    ],
+    "anchors": [
+      {
+        "seq": 10,
+        "target_seq": 5,
+        "tsa": "tsa-a",
+        "gen_time": "2026-03-01T03:00:00Z",
+        "signer": "corpus",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 16,
+        "target_seq": 14,
+        "tsa": "tsa-b",
+        "gen_time": "2026-03-03T02:00:00Z",
+        "signer": "corpus",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 17,
+        "target_seq": 14,
+        "tsa": "tsa-c",
+        "gen_time": "2026-03-03T12:00:00Z",
+        "signer": "corpus",
+        "pinned": true,
+        "ok": true
+      }
+    ],
+    "last_anchored_seq": 14,
+    "unanchored_tail": 3,
+    "max_anchor_lag_seconds": 158400,
+    "max_anchor_lag_seq": 6,
+    "entries_lagging_over_24h": 9,
+    "dropped_calls": 6,
+    "anchor_checks_skipped": false
+  }
+}
