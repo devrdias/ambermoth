@@ -35,11 +35,13 @@ func (a *TestAuthority) readCert(t testing.TB, name string) *x509.Certificate {
 // signer's key, for tests that rebuild parts of a token.
 func (a *TestAuthority) Sign(t testing.TB, data []byte) []byte {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(a.dir, "data.bin"), data, 0o600); err != nil {
+	dir := t.TempDir() // per call, so parallel subtests do not share files
+	in, out := filepath.Join(dir, "data.bin"), filepath.Join(dir, "data.sig")
+	if err := os.WriteFile(in, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run(t, a.dir, "dgst", "-sha256", "-sign", "tsa.key", "-out", "data.sig", "data.bin")
-	sig, err := os.ReadFile(filepath.Join(a.dir, "data.sig"))
+	run(t, a.dir, "dgst", "-sha256", "-sign", "tsa.key", "-out", out, in)
+	sig, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatal(err)
 	}

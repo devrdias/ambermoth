@@ -57,10 +57,6 @@ func TestVerifyAccepts(t *testing.T) {
 			sd := signedData(t, r)
 			sd.Kids = append(sd.Kids, null(t))
 		})},
-		{name: "no signing-certificate attribute", roots: trusted, build: editor(func(t *testing.T, r *tsatest.Node) {
-			dropAttribute(t, r, signingCertV2OID())
-			resign(t, f, r)
-		})},
 		{name: "signer without an extended key usage", roots: trusted, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, noUsage) }},
 		{name: "signer allowed for server auth and time stamping", roots: trusted, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, twoUsages) }},
 		{name: "expired signer when no roots are given", roots: noRoots, build: func(t *testing.T, f *fixture) []byte { return f.withSigner(t, expired) }},

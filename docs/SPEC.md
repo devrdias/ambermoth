@@ -283,6 +283,7 @@ A verifier checks each token:
 - status is granted or granted with modifications; the imprint is SHA-256 of *h*.
 - the CMS signature over the TSTInfo verifies with the certificate in the token.
 - the SignerInfo has signed attributes (RFC 5652 §5.3), and their messageDigest and content-type match the TSTInfo.
+- a signing-certificate attribute (ESSCertID or ESSCertIDv2) is present, and its hash, and issuerSerial if given, match the certificate that verified the signature.
 
 Multiple independent TSAs SHOULD be used. `ambermoth init` configures two:
 `https://freetsa.org/tsr` and `http://timestamp.digicert.com`. Each anchor run

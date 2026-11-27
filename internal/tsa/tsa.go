@@ -514,14 +514,23 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 	if err != nil {
 		return nil, err
 	}
-	signed, err := signedBytes(sp.attrs, h, content)
-	if err != nil {
+	if err := verifySignature(signer, sp, h, content); err != nil {
 		return nil, err
 	}
-	if err := signer.CheckSignature(sp.alg, signed, sp.sig); err != nil {
-		return nil, fmt.Errorf("TSA signature invalid: %w", err)
-	}
 	return signer, nil
+}
+
+// verifySignature checks the signed attributes and the signature over them,
+// then that the signing-certificate attribute names the certificate that verified.
+func verifySignature(signer *x509.Certificate, sp signatureParts, h crypto.Hash, content []byte) error {
+	signed, err := signedBytes(sp.attrs, h, content)
+	if err != nil {
+		return err
+	}
+	if err := signer.CheckSignature(sp.alg, signed, sp.sig); err != nil {
+		return fmt.Errorf("TSA signature invalid: %w", err)
+	}
+	return checkSigningCert(sp.attrs.Bytes, signer)
 }
 
 // findSigner returns the certificate a SignerInfo names.
@@ -629,10 +638,7 @@ func checkSignedAttrs(contents, contentDigest []byte) error {
 // attribute names TSTInfo.
 func readSignedAttrs(attrs []asn1.RawValue) (md []byte, ctOK bool, err error) {
 	for _, a := range attrs {
-		var attr struct {
-			Type   asn1.ObjectIdentifier
-			Values asn1.RawValue `asn1:"set"`
-		}
+		var attr signedAttr
 		if _, err := asn1.Unmarshal(a.FullBytes, &attr); err != nil {
 			return nil, false, err
 		}

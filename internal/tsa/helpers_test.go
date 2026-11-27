@@ -85,6 +85,12 @@ func attribute(t *testing.T, r *tsatest.Node, typ asn1.ObjectIdentifier) *tsates
 	return nil
 }
 
+// certID returns the first certID of the signing-certificate attribute of the given type.
+func certID(t *testing.T, r *tsatest.Node, typ asn1.ObjectIdentifier) *tsatest.Node {
+	t.Helper()
+	return attribute(t, r, typ).At(t, 1, 0, 0, 0)
+}
+
 // dropAttribute removes the signed attribute of the given type.
 func dropAttribute(t *testing.T, r *tsatest.Node, typ asn1.ObjectIdentifier) {
 	t.Helper()
@@ -143,6 +149,12 @@ func contentTypeOID() asn1.ObjectIdentifier { return asn1.ObjectIdentifier{1, 2,
 func messageDigestOID() asn1.ObjectIdentifier {
 	return asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}
 }
+func signingCertV1OID() asn1.ObjectIdentifier {
+	return asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 16, 2, 12}
+}
+func sha512OID() asn1.ObjectIdentifier { return asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3} }
+func sha256OID() asn1.ObjectIdentifier { return asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1} }
+func sha1OID() asn1.ObjectIdentifier   { return asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26} }
 func signingCertV2OID() asn1.ObjectIdentifier {
 	return asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 16, 2, 47}
 }

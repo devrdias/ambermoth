@@ -1,6 +1,7 @@
 package tsa_test
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"strings"
@@ -12,11 +13,17 @@ import (
 )
 
 // withSigner swaps the signer certificate in the token for one with the same
-// key and names but the given validity and key usage. The signature still holds.
+// key and names but the given validity and key usage. The signing-certificate
+// attribute is rewritten for it and the token signed again, so it still verifies.
 func (f *fixture) withSigner(t *testing.T, o tsatest.CertOptions) []byte {
 	t.Helper()
 	der := f.auth.ReissueSigner(t, o)
-	return f.edit(t, func(r *tsatest.Node) { certSet(t, r).Kids = []*tsatest.Node{{Raw: der}} })
+	return f.edit(t, func(r *tsatest.Node) {
+		certSet(t, r).Kids = []*tsatest.Node{{Raw: der}}
+		sum := sha256.Sum256(der)
+		certID(t, r, signingCertV2OID()).Kids[0] = octets(t, sum[:])
+		resign(t, f, r)
+	})
 }
 
 func (f *fixture) genTime(t *testing.T) time.Time {
