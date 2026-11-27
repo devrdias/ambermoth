@@ -153,12 +153,22 @@ Common fields on every entry:
 | `latency_ms` | Request start → last response byte |
 | `key_fp` | §3.4, or `""` if the call carried no key |
 | `purpose` | Tag at the time of the call (§5) |
-| `note` | Optional free text (`X-Provenance-Note`), truncated to 512 bytes |
-| `git_ref` | Optional commit (`X-Provenance-Git-Ref`), truncated to 256 bytes |
+| `note` | Optional free text (`X-Provenance-Note`), at most 512 bytes in total |
+| `git_ref` | Optional commit (`X-Provenance-Git-Ref`), at most 256 bytes |
 | `transport` | Present only for upgraded connections: `websocket` (§6.5) |
 | `salt_id`, `prompt_hmac`, `output_hmac` | §3.3 |
 | `bytes_in`, `bytes_out` | Body sizes |
 | `client_aborted` | bool — client disconnected before the response finished |
+
+Text taken from request headers or the path is written as valid UTF-8: each
+invalid byte sequence becomes U+FFFD. A value over its limit is cut on a
+character boundary and ends in `…[truncated]`, which counts towards the limit.
+
+When the purpose header is invalid (§5), the proxy adds `invalid purpose header:
+<value>` to the note, after the caller's own note and a space. The whole note
+still fits in 512 bytes. The purpose text is guaranteed 256 bytes (or all of
+it, if shorter), the caller's note gets the rest; the fixed prefix is never
+cut, only the value.
 
 ### 4.3 `amendment` — re-tag or annotate earlier entries
 
@@ -210,6 +220,14 @@ Resolution order for a call: `X-Provenance-Purpose` header → route rule
 (path prefix match in config) → per-key default (by fingerprint) → config
 default → `untagged`. An invalid header value is recorded as `untagged` with
 `note: "invalid purpose header: <value>"` — never rejected (fail open).
+
+Purposes in `config.json` (`default_purpose`, the `purpose` of each route rule,
+the values of `key_defaults`) are checked when the config loads, with the same
+rule as the header: a taxonomy tag, `untagged` or an `x-` tag. `other-declared`
+is refused there, because it needs a note and a config has none. An empty
+`default_purpose` means `untagged`. A config with any other value does not
+load, and `ambermoth proxy` refuses to start; the error names the field and the
+value.
 
 ## 6. Proxy behaviour
 
@@ -272,6 +290,26 @@ closes: `status` 101, `endpoint` `realtime`, `transport` `websocket`,
 `bytes_out`/`output_hmac` over everything the upstream sent. Frames are not
 parsed in v0.1, so `tokens_in`/`tokens_out` are 0 and `usage_reported` is
 false; billing reconciliation (§10) covers the token totals.
+
+### 6.6 Config checks
+
+`config.json` is checked when it loads, by every command that reads it. A
+config that fails a check does not load, and `ambermoth proxy` refuses to
+start; nothing is checked while a request is being served. Each error names
+the field and the value. Keys the config does not know are ignored, so an old
+file keeps loading.
+
+| Field | Rule |
+|---|---|
+| `listen` | `host:port`, host may be empty, port 1 to 65535 in digits |
+| `upstreams.<name>` | name not empty, without `/`, not `_ambermoth`; `style` is `openai` or `anthropic` |
+| `upstreams.<name>.base_url` | absolute `http` or `https` URL with a host, no query or fragment; trailing `/` is dropped |
+| `tsas[]` | same rule as `base_url` |
+| `anchor_interval` | empty (anchoring off) or a Go duration greater than zero, e.g. `1h`, `90s` |
+| `default_purpose`, `routes[].purpose`, `key_defaults` values | purpose rule of §5 |
+
+The `--listen` flag of `ambermoth proxy` replaces `listen`; the address is
+checked when the socket is opened.
 
 ## 7. Anchoring (RFC 3161)
 

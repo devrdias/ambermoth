@@ -110,12 +110,13 @@ func TestPurposeInvalidHeaderIsRecordedNotRejected(t *testing.T) {
 	}
 }
 
-// The note is documented as capped at 512 bytes (SPEC §4.2), but the invalid
-// value is appended after the cap, so a long value goes through whole.
-func TestPurposeInvalidValueBypassesNoteCap(t *testing.T) {
-	long := strings.Repeat("a", 2000)
-	runPurposeCase(t, purposeCase{path: "/v1/chat/completions", header: str(long),
-		want: "untagged", wantNote: "invalid purpose header: " + long})
+// The cap of SPEC §4.2 covers the whole note, the invalid value included.
+func TestPurposeInvalidValueIsCutToTheNoteCap(t *testing.T) {
+	const prefix = "invalid purpose header: "
+	const marker = "…[truncated]"
+	value := strings.Repeat("a", proxy.MaxNoteBytes-len(prefix)-len(marker))
+	runPurposeCase(t, purposeCase{path: "/v1/chat/completions", header: str(strings.Repeat("a", 2000)),
+		want: "untagged", wantNote: prefix + value + marker})
 }
 
 func TestPurposeResolutionWithoutHeader(t *testing.T) {
@@ -152,9 +153,6 @@ func TestPurposeResolutionWithoutHeader(t *testing.T) {
 			proxy.RouteRule{Upstream: "anthropic", Prefix: "/v1", Purpose: "batch-job"},
 			proxy.RouteRule{Prefix: "/v1", Purpose: "rag-query"}),
 			path: "/v1/embeddings", want: "rag-query"},
-		{name: "rule purpose is not validated", tune: purposeRoutes(proxy.RouteRule{Prefix: "/v1", Purpose: "bogus"}),
-			path: "/v1/embeddings", want: "bogus"},
-		{name: "default purpose is not validated", tune: purposeConfig("bogus", ""), path: "/v1/embeddings", want: "bogus"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { runPurposeCase(t, tc) })

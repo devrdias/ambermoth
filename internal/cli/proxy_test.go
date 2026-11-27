@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -173,5 +174,51 @@ func TestProxyRecordsCallsAndPacksThem(t *testing.T) {
 	}
 	for _, c := range steps {
 		t.Run(c.name, func(t *testing.T) { h.check(t, c) })
+	}
+}
+
+// A config that cannot work stops 'ambermoth proxy' before it listens, and the
+// message names the field and the value.
+func TestProxyRefusesToStartOnABadConfig(t *testing.T) {
+	cases := []struct {
+		name    string
+		edit    func(*proxy.Config)
+		wantErr string
+	}{
+		{"negative anchor interval", func(c *proxy.Config) { c.AnchorInterval = "-1h" }, `anchor_interval "-1h"`},
+		{"bad listen address", func(c *proxy.Config) { c.Listen = "not an address" }, `listen "not an address"`},
+		{"bad base url", func(c *proxy.Config) {
+			c.Upstreams["openai"] = proxy.Upstream{BaseURL: "api.openai.com", Style: "openai"}
+		}, `upstreams["openai"].base_url "api.openai.com"`},
+		{"unknown purpose", func(c *proxy.Config) { c.DefaultPurpose = "bogus" }, `default_purpose "bogus"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+			path := filepath.Join(h.dir, ledger.ConfigFile)
+			cfg, err := proxy.LoadConfig(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(&cfg)
+			if err := os.WriteFile(path, proxy.MarshalConfig(cfg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			h.check(t, runCase{args: []string{"proxy"}, wantCode: cli.ExitFail, wantErr: tc.wantErr})
+		})
+	}
+}
+
+// The config that init writes loads as the defaults.
+func TestInitWritesAConfigThatLoads(t *testing.T) {
+	h := newHarness(t)
+	h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+	got, err := proxy.LoadConfig(filepath.Join(h.dir, ledger.ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, proxy.DefaultConfig()) {
+		t.Errorf("got %+v, want the defaults", got)
 	}
 }
