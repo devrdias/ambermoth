@@ -1,0 +1,21 @@
+{
+  "ReadError": "line 4 is longer than 16 MiB",
+  "GapSeqs": null,
+  "Report": {
+    "entries": 3,
+    "first_seq": 0,
+    "last_seq": 2,
+    "head_hash": "sha256:44531d3f7ff2374c97d8cbf381954e1d2c6849baba0196b9bd92eb8841abf153",
+    "starts_at_genesis": true,
+    "errors": [],
+    "warnings": [],
+    "anchors": [],
+    "last_anchored_seq": -1,
+    "unanchored_tail": 3,
+    "max_anchor_lag_seconds": -1,
+    "max_anchor_lag_seq": -1,
+    "entries_lagging_over_24h": 0,
+    "dropped_calls": 0,
+    "anchor_checks_skipped": false
+  }
+}
