@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,25 +47,54 @@ type Store struct {
 var ErrNilClock = errors.New("ledger: nil clock")
 
 // Init creates a new ledger directory with a fresh master key and genesis entry.
+// It never replaces a file: an existing ledger.jsonl or secret.key is an error.
 func Init(dir, generator string, clock Clock) (*Store, error) {
 	if clock == nil {
 		return nil, ErrNilClock
 	}
 	if _, err := os.Stat(filepath.Join(dir, LedgerFile)); err == nil {
-		return nil, fmt.Errorf("ledger already exists in %s", dir)
+		return nil, errLedgerExists(dir)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, AnchorDir), 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	key, err := createKey(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := createLedger(dir, key, generator, clock); err != nil {
+		// The key is ours, made a moment ago, and no ledger uses it yet.
+		_ = os.Remove(filepath.Join(dir, KeyFile))
+		return nil, err
+	}
+	return Open(dir, clock)
+}
+
+func errLedgerExists(dir string) error { return fmt.Errorf("ledger already exists in %s", dir) }
+
+// createKey writes a new master key to dir. The key file is the gate for two
+// concurrent Init calls: only the one that creates it goes on to write a ledger.
+func createKey(dir string) ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, KeyFile), []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
-		return nil, err
+	err := createExclusive(filepath.Join(dir, KeyFile), []byte(hex.EncodeToString(key)+"\n"))
+	if errors.Is(err, fs.ErrExist) {
+		return nil, fmt.Errorf("%s already exists in %s: not overwriting it, because every HMAC in a ledger is derived from it. "+
+			"Restore the %s that belongs to it, or remove %s yourself to start a new ledger", KeyFile, dir, LedgerFile, KeyFile)
+	}
+	return key, err
+}
+
+// createLedger makes the anchors directory, which may already exist, and
+// writes the genesis entry for key to a new ledger file.
+func createLedger(dir string, key []byte, generator string, clock Clock) error {
+	if err := os.MkdirAll(filepath.Join(dir, AnchorDir), 0o700); err != nil {
+		return err
 	}
 	idb := make([]byte, 16)
-	rand.Read(idb)
+	_, _ = rand.Read(idb)
 	idb[6] = (idb[6] & 0x0f) | 0x40
 	idb[8] = (idb[8] & 0x3f) | 0x80
 	id := fmt.Sprintf("%x-%x-%x-%x-%x", idb[0:4], idb[4:6], idb[6:8], idb[8:10], idb[10:])
@@ -76,17 +106,36 @@ func Init(dir, generator string, clock Clock) (*Store, error) {
 	}
 	h, err := ComputeHash(g)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	g["entry_hash"] = h
 	line, err := canon.Marshal(map[string]any(g))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, LedgerFile), append(line, '\n'), 0o600); err != nil {
-		return nil, err
+	err = createExclusive(filepath.Join(dir, LedgerFile), append(line, '\n'))
+	if errors.Is(err, fs.ErrExist) {
+		return errLedgerExists(dir)
 	}
-	return Open(dir, clock)
+	return err
+}
+
+// createExclusive creates path with mode 0600 and writes data to it. It fails
+// with fs.ErrExist when anything, a link included, is already at path, and
+// removes the file again if the write fails.
+func createExclusive(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+	}
+	return err
 }
 
 // Now returns the store's current time in UTC, from its injected clock.

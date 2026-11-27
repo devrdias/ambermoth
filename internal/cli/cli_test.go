@@ -176,3 +176,49 @@ func TestCommandsOnLedgerLinesThatAreNotObjects(t *testing.T) {
 		})
 	}
 }
+
+func TestInitRefusesToReplaceAKey(t *testing.T) {
+	h := newHarness(t)
+	if err := os.MkdirAll(h.dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(h.dir, ledger.KeyFile)
+	if err := os.WriteFile(keyFile, []byte("old key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitFail,
+		wantErr: "error: secret.key already exists in " + h.dir + ": not overwriting it"})
+	if b, err := os.ReadFile(keyFile); err != nil || string(b) != "old key\n" {
+		t.Errorf("key file = %q, %v; want it unchanged", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, ledger.LedgerFile)); err == nil {
+		t.Error("a ledger was created")
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, ledger.ConfigFile)); err == nil {
+		t.Error("a config was written for a refused init")
+	}
+}
+
+func TestInitConfigFile(t *testing.T) {
+	cfgFile := func(h *harness) string { return filepath.Join(h.dir, ledger.ConfigFile) }
+	t.Run("writes the default config", func(t *testing.T) {
+		h := newHarness(t)
+		h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+		if b, err := os.ReadFile(cfgFile(h)); err != nil || !strings.Contains(string(b), "listen") {
+			t.Errorf("config = %q, %v", b, err)
+		}
+	})
+	t.Run("keeps a config that is already there", func(t *testing.T) {
+		h := newHarness(t)
+		if err := os.MkdirAll(h.dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cfgFile(h), []byte(`{"mine":true}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+		if b, _ := os.ReadFile(cfgFile(h)); string(b) != `{"mine":true}` {
+			t.Errorf("config was replaced: %q", b)
+		}
+	})
+}
