@@ -1,0 +1,118 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 1,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 0,
+      "by_endpoint": {
+        "chat": 1
+      },
+      "by_model": {
+        "m1": 1
+      },
+      "by_day": {
+        "2026-03-03": 1
+      },
+      "by_key": {
+        "sha256:k1": 1
+      },
+      "first": "2026-03-03T00:00:00.000Z",
+      "last": "2026-03-03T00:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 3,
+          "ts": "2026-03-03T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        }
+      ]
+    },
+    "by_purpose": {
+      "untagged": {
+        "calls": 1,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 1
+        },
+        "by_model": {
+          "m1": 1
+        },
+        "by_day": {
+          "2026-03-03": 1
+        },
+        "by_key": {
+          "sha256:k1": 1
+        },
+        "first": "2026-03-03T00:00:00.000Z",
+        "last": "2026-03-03T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 3,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 1,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 1
+        },
+        "by_model": {
+          "m1": 1
+        },
+        "by_day": {
+          "2026-03-03": 1
+        },
+        "by_key": {
+          "sha256:k1": 1
+        },
+        "first": "2026-03-03T00:00:00.000Z",
+        "last": "2026-03-03T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 3,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": null,
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": [
+    {
+      "key_fp": "sha256:k1",
+      "provider": "openai",
+      "calls": 1,
+      "enrolled": false
+    }
+  ],
+  "Original": {},
+  "Effective": {
+    "3": "untagged"
+  }
+}

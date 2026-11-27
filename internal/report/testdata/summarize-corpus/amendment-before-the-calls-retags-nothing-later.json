@@ -1,0 +1,204 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 3,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 1,
+      "by_endpoint": {
+        "chat": 3
+      },
+      "by_model": {
+        "m1": 3
+      },
+      "by_day": {
+        "2026-03-01": 1,
+        "2026-03-02": 1,
+        "2026-03-03": 1
+      },
+      "by_key": {
+        "sha256:k1": 3
+      },
+      "first": "2026-03-01T00:00:00.000Z",
+      "last": "2026-03-03T00:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 1,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 3,
+          "ts": "2026-03-02T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 4,
+          "ts": "2026-03-03T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        }
+      ]
+    },
+    "by_purpose": {
+      "eval": {
+        "calls": 1,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 1,
+        "by_endpoint": {
+          "chat": 1
+        },
+        "by_model": {
+          "m1": 1
+        },
+        "by_day": {
+          "2026-03-01": 1
+        },
+        "by_key": {
+          "sha256:k1": 1
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      },
+      "untagged": {
+        "calls": 2,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 2
+        },
+        "by_model": {
+          "m1": 2
+        },
+        "by_day": {
+          "2026-03-02": 1,
+          "2026-03-03": 1
+        },
+        "by_key": {
+          "sha256:k1": 2
+        },
+        "first": "2026-03-02T00:00:00.000Z",
+        "last": "2026-03-03T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 3,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 4,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 3,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 1,
+        "by_endpoint": {
+          "chat": 3
+        },
+        "by_model": {
+          "m1": 3
+        },
+        "by_day": {
+          "2026-03-01": 1,
+          "2026-03-02": 1,
+          "2026-03-03": 1
+        },
+        "by_key": {
+          "sha256:k1": 3
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-03T00:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-02T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 4,
+            "ts": "2026-03-03T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": [
+    {
+      "by": "b",
+      "new_purpose": "eval",
+      "reason": "r",
+      "seq": 2,
+      "target_from": 1,
+      "target_to": 10,
+      "ts": "2026-03-20T00:00:00.000Z",
+      "type": "amendment"
+    }
+  ],
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": [
+    {
+      "key_fp": "sha256:k1",
+      "provider": "openai",
+      "calls": 3,
+      "enrolled": false
+    }
+  ],
+  "Original": {
+    "1": "untagged"
+  },
+  "Effective": {
+    "1": "eval",
+    "3": "untagged",
+    "4": "untagged"
+  }
+}

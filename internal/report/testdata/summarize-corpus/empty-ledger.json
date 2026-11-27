@@ -1,0 +1,29 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 0,
+      "by_endpoint": {},
+      "by_model": {},
+      "by_day": {},
+      "by_key": {},
+      "first": "",
+      "last": "",
+      "exemplars": []
+    },
+    "by_purpose": {},
+    "by_provider": {}
+  },
+  "Amendments": null,
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": null,
+  "Original": {},
+  "Effective": {}
+}

@@ -1,0 +1,217 @@
+{
+  "Totals": {
+    "all": {
+      "calls": 5,
+      "tokens_in": 10,
+      "tokens_out": 0,
+      "cached_in": 0,
+      "errors": 0,
+      "retagged": 3,
+      "by_endpoint": {
+        "chat": 5
+      },
+      "by_model": {
+        "m1": 5
+      },
+      "by_day": {
+        "2026-03-01": 5
+      },
+      "by_key": {
+        "sha256:k1": 5
+      },
+      "first": "2026-03-01T00:00:00.000Z",
+      "last": "2026-03-01T04:00:00.000Z",
+      "exemplars": [
+        {
+          "seq": 1,
+          "ts": "2026-03-01T00:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 2,
+          "ts": "2026-03-01T01:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        },
+        {
+          "seq": 3,
+          "ts": "2026-03-01T02:00:00.000Z",
+          "model": "m1",
+          "prompt_hmac": "p",
+          "output_hmac": "o"
+        }
+      ]
+    },
+    "by_purpose": {
+      "eval": {
+        "calls": 3,
+        "tokens_in": 6,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 3,
+        "by_endpoint": {
+          "chat": 3
+        },
+        "by_model": {
+          "m1": 3
+        },
+        "by_day": {
+          "2026-03-01": 3
+        },
+        "by_key": {
+          "sha256:k1": 3
+        },
+        "first": "2026-03-01T01:00:00.000Z",
+        "last": "2026-03-01T03:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 2,
+            "ts": "2026-03-01T01:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-01T02:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 4,
+            "ts": "2026-03-01T03:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      },
+      "prod": {
+        "calls": 2,
+        "tokens_in": 4,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "chat": 2
+        },
+        "by_model": {
+          "m1": 2
+        },
+        "by_day": {
+          "2026-03-01": 2
+        },
+        "by_key": {
+          "sha256:k1": 2
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T04:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 5,
+            "ts": "2026-03-01T04:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    },
+    "by_provider": {
+      "openai": {
+        "calls": 5,
+        "tokens_in": 10,
+        "tokens_out": 0,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 3,
+        "by_endpoint": {
+          "chat": 5
+        },
+        "by_model": {
+          "m1": 5
+        },
+        "by_day": {
+          "2026-03-01": 5
+        },
+        "by_key": {
+          "sha256:k1": 5
+        },
+        "first": "2026-03-01T00:00:00.000Z",
+        "last": "2026-03-01T04:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 1,
+            "ts": "2026-03-01T00:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 2,
+            "ts": "2026-03-01T01:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-01T02:00:00.000Z",
+            "model": "m1",
+            "prompt_hmac": "p",
+            "output_hmac": "o"
+          }
+        ]
+      }
+    }
+  },
+  "Amendments": [
+    {
+      "by": "b",
+      "new_purpose": "eval",
+      "reason": "r",
+      "seq": 6,
+      "target_from": 2,
+      "target_to": 4,
+      "ts": "2026-03-20T00:00:00.000Z",
+      "type": "amendment"
+    }
+  ],
+  "KeyEvents": null,
+  "CodeLinks": null,
+  "Gaps": null,
+  "Reconciliations": null,
+  "Keys": [
+    {
+      "key_fp": "sha256:k1",
+      "provider": "openai",
+      "calls": 5,
+      "enrolled": false
+    }
+  ],
+  "Original": {
+    "2": "prod",
+    "3": "prod",
+    "4": "prod"
+  },
+  "Effective": {
+    "1": "prod",
+    "2": "eval",
+    "3": "eval",
+    "4": "eval",
+    "5": "prod"
+  }
+}
