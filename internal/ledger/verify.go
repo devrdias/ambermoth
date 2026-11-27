@@ -238,35 +238,66 @@ func unanchoredTail(entries []Entry, lastAnchored int64) int {
 // entry's own timestamp. A record anchored long after its entries only proves
 // they existed from the anchor time on (SPEC §8 step 6).
 func (r *Report) computeAnchorLag(entries []Entry) {
-	type anc struct {
-		target int64
-		gen    time.Time
-	}
-	var as []anc
-	for _, a := range r.Anchors {
-		if a.OK && !a.GenTime.IsZero() {
-			as = append(as, anc{a.TargetSeq, a.GenTime})
-		}
-	}
+	as := r.anchorTimes()
 	if len(as) == 0 {
 		return
 	}
+	worst := r.scanLags(entries, as)
+	if worst < 0 {
+		worst = 0
+	}
+	r.MaxAnchorLagSeconds = int64(worst / time.Second)
+	if r.EntriesLaggingOver24h > 0 {
+		r.warnf("%d entries were first anchored more than 24h after their own timestamps (largest gap %s, seq %d): they are only proven to exist from their anchor time on",
+			r.EntriesLaggingOver24h, worst.Round(time.Minute), r.MaxAnchorLagSeq)
+	}
+}
+
+// anchorTime is the TSA time proving everything up to and including target.
+type anchorTime struct {
+	target int64
+	gen    time.Time
+}
+
+// anchorTimes lists the valid anchors by target. Each time is the earliest
+// TSA time of any anchor at or after that target, which is the earliest proof
+// for any entry up to it.
+func (r *Report) anchorTimes() []anchorTime {
+	var as []anchorTime
+	for _, a := range r.Anchors {
+		if a.OK && !a.GenTime.IsZero() {
+			as = append(as, anchorTime{a.TargetSeq, a.GenTime})
+		}
+	}
 	sort.Slice(as, func(i, j int) bool { return as[i].target < as[j].target })
-	// suffix minimum of TSA time: earliest proof for any entry at or before target
 	for i := len(as) - 2; i >= 0; i-- {
 		if as[i+1].gen.Before(as[i].gen) {
 			as[i].gen = as[i+1].gen
 		}
 	}
+	return as
+}
+
+// firstCovering returns the index, from from on, of the first anchor whose
+// target is at or after seq; len(as) when none is.
+func firstCovering(as []anchorTime, from int, seq int64) int {
+	for from < len(as) && as[from].target < seq {
+		from++
+	}
+	return from
+}
+
+// scanLags counts the entries lagging over 24h, records the entry with the
+// largest lag in MaxAnchorLagSeq and returns that lag, or -1 when no entry is
+// anchored. Entries must be in seq order.
+func (r *Report) scanLags(entries []Entry, as []anchorTime) time.Duration {
 	var worst time.Duration = -1
 	k := 0
 	for _, e := range entries {
 		if e == nil || e.Type() == TypeAnchor {
 			continue
 		}
-		for k < len(as) && as[k].target < e.Seq() {
-			k++
-		}
+		k = firstCovering(as, k, e.Seq())
 		if k == len(as) {
 			break // the rest is unanchored
 		}
@@ -282,14 +313,7 @@ func (r *Report) computeAnchorLag(entries []Entry) {
 			worst, r.MaxAnchorLagSeq = lag, e.Seq()
 		}
 	}
-	if worst < 0 {
-		worst = 0
-	}
-	r.MaxAnchorLagSeconds = int64(worst / time.Second)
-	if r.EntriesLaggingOver24h > 0 {
-		r.warnf("%d entries were first anchored more than 24h after their own timestamps (largest gap %s, seq %d): they are only proven to exist from their anchor time on",
-			r.EntriesLaggingOver24h, worst.Round(time.Minute), r.MaxAnchorLagSeq)
-	}
+	return worst
 }
 
 // FormatLag renders a lag in seconds for people.
