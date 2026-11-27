@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 	"testing"
+
+	"github.com/devrdias/ambermoth/internal/ledger"
 )
 
 // capFileSize makes any write that grows a file past size fail with EFBIG until
@@ -41,6 +43,9 @@ func TestAppendWriteErrorLeavesTheTailAlone(t *testing.T) {
 	err := s.Append(call(), call())
 	if !errors.Is(err, syscall.EFBIG) {
 		t.Fatalf("err = %v, want EFBIG", err)
+	}
+	if errors.Is(err, ledger.ErrEncode) {
+		t.Error("a write error matches ErrEncode")
 	}
 	if !bytes.Equal(readBytes(t, s.LedgerPath()), before) {
 		t.Fatal("ledger changed by a failed write")

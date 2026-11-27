@@ -294,6 +294,17 @@ func readLastLine(path string, size int64) ([]byte, error) {
 	return bytes.TrimSpace(buf), nil
 }
 
+// ErrEncode is returned by Append when an entry has no canonical form (SPEC
+// §3.1). Nothing was written; the entry itself is at fault, not the disk.
+var ErrEncode = errors.New("entry cannot be encoded")
+
+// encodeError keeps the text of the underlying error and matches ErrEncode.
+type encodeError struct{ err error }
+
+func (e encodeError) Error() string        { return e.err.Error() }
+func (e encodeError) Unwrap() error        { return e.err }
+func (e encodeError) Is(target error) bool { return target == ErrEncode }
+
 // Append assigns seq/prev_hash/entry_hash to each entry, writes them and fsyncs.
 // The passed entries are updated in place.
 func (s *Store) Append(entries ...Entry) error {
@@ -338,12 +349,12 @@ func (s *Store) sealEntries(entries []Entry) (lines []byte, seq int64, prev stri
 		delete(e, "entry_hash")
 		h, err := ComputeHash(e)
 		if err != nil {
-			return nil, 0, "", fmt.Errorf("entry %d: %w", seq, err)
+			return nil, 0, "", encodeError{fmt.Errorf("entry %d: %w", seq, err)}
 		}
 		e["entry_hash"] = h
 		line, err := canon.Marshal(map[string]any(e))
 		if err != nil {
-			return nil, 0, "", err
+			return nil, 0, "", encodeError{err}
 		}
 		buf.Write(line)
 		buf.WriteByte('\n')

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -104,6 +105,10 @@ func (w *Writer) Run(ctx context.Context) error {
 	}
 }
 
+// causeEncode is the gap cause for an entry the canonical writer refused. It
+// says nothing about the entry.
+const causeEncode = "entry could not be encoded"
+
 // flush appends the batch, preceded by a gap entry if calls were dropped, and
 // returns the emptied batch for reuse.
 func (w *Writer) flush(batch []ledger.Entry) []ledger.Entry {
@@ -111,18 +116,68 @@ func (w *Writer) flush(batch []ledger.Entry) []ledger.Entry {
 		return batch
 	}
 	out, gapCount := w.withGap(batch)
-	if err := w.store.Append(out...); err != nil {
-		w.log.Error("ledger write failed, entries dropped", "entries", len(batch), "error", err)
-		w.drop(int64(len(batch)), "ledger write error: "+err.Error())
-		return batch[:0]
+	err := w.store.Append(out...)
+	switch {
+	case err == nil:
+		w.settleGap(gapCount)
+	case errors.Is(err, ledger.ErrEncode):
+		w.flushEach(out, gapCount)
+	default:
+		w.failBatch(batch, err)
 	}
+	return batch[:0]
+}
+
+// failBatch drops entries after a write error. The disk is at fault, so they
+// are not retried.
+func (w *Writer) failBatch(entries []ledger.Entry, err error) {
+	w.log.Error("ledger write failed, entries dropped", "entries", len(entries), "error", err)
+	w.drop(int64(len(entries)), "ledger write error: "+err.Error())
+}
+
+// settleGap takes the gap entry just written off the dropped count.
+func (w *Writer) settleGap(gapCount int64) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.dropped -= gapCount
 	if w.dropped > 0 {
 		w.dropSince = w.store.Now()
 	}
-	w.mu.Unlock()
-	return batch[:0]
+}
+
+// flushEach appends out one entry at a time, after Append refused it as a
+// whole because one entry cannot be encoded. That write left the ledger
+// alone, so only the entries that cannot be encoded are dropped, and counted
+// in a gap entry. If the disk fails during this, the rest of the batch is
+// dropped as in flush. The first of out is the pending gap when gapCount > 0.
+func (w *Writer) flushEach(out []ledger.Entry, gapCount int64) {
+	var bad int64
+	for i, e := range out {
+		err := w.store.Append(e)
+		if err == nil && gapCount > 0 && i == 0 {
+			w.settleGap(gapCount)
+		}
+		if errors.Is(err, ledger.ErrEncode) {
+			w.log.Error("entry could not be encoded, dropped", "type", e.Type(), "error", err)
+			bad++
+			continue
+		}
+		if err != nil {
+			w.dropEncoded(bad)
+			w.failBatch(out[i:], err)
+			return
+		}
+	}
+	if bad > 0 {
+		w.dropEncoded(bad)
+		w.flush(nil) // write its gap now: nothing may come after a shutdown flush
+	}
+}
+
+func (w *Writer) dropEncoded(n int64) {
+	if n > 0 {
+		w.drop(n, causeEncode)
+	}
 }
 
 // withGap prepends a gap entry for the calls dropped so far, if any.

@@ -269,11 +269,26 @@ Parsing is best-effort and bounded (the proxy keeps at most 4 MiB of a
 non-streaming body and one SSE line at a time for parsing; hashing always
 covers the full body).
 
+A count is a non-negative number; a fraction is cut to a whole number. A
+negative count is ignored. A count above 2^53−1 (the largest integer an entry
+can hold, §3.1) is left out, so the field is `0` as if absent, and the proxy
+appends `usage count out of range, ignored` to the call's `note` (after the
+caller's own note and a space, within the 512 bytes). `usage_reported` is still
+true. The call is recorded either way.
+
 ### 6.4 Failure modes (fail open)
 
 - Ledger write failure or a full write queue MUST NOT block or fail the app's
   request. The writer counts dropped entries and, on the next successful write,
   first appends a `gap` entry.
+- An entry that cannot be encoded (it has no canonical form, §3.1) does not
+  take its batch with it. When appending a batch is refused for that reason,
+  nothing was written; the writer then appends the entries one at a time, in
+  the order queued, and drops only the ones that are refused. They are counted
+  in a `gap` entry with the cause `entry could not be encoded`, which says
+  nothing about the entry. A write error (disk full, I/O) is different: the
+  batch is dropped as a whole and counted, and nothing is retried entry by
+  entry.
 - Durability: entries are written by a single writer goroutine, batched, and
   `fsync`ed at least every 200 ms. This is best-effort durability (an entry
   may be lost if the host crashes within that window); a crash leaves at most a

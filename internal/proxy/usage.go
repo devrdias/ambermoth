@@ -12,11 +12,24 @@ type usage struct {
 	In, Out, Cached int64
 	Reported        bool
 	Model           string
+	// OutOfRange is set when a count was beyond maxCount and so left out.
+	OutOfRange bool
 }
 
-func num(m map[string]any, k string) (int64, bool) {
-	f, ok := m[k].(float64)
-	return int64(f), ok
+// maxCount is the largest integer an entry can hold (SPEC §3.1).
+const maxCount = 1<<53 - 1
+
+// num reads the count at m[k]. A negative one is ignored. One above maxCount
+// would make the entry unwritable, so it is left out and reported as tooBig.
+func num(m map[string]any, k string) (n int64, ok, tooBig bool) {
+	f, isNum := m[k].(float64)
+	if !isNum || f < 0 {
+		return 0, false, false
+	}
+	if f > maxCount {
+		return 0, false, true
+	}
+	return int64(f), true, false
 }
 
 func sub(m map[string]any, k string) map[string]any {
@@ -37,18 +50,20 @@ func (u *usage) absorbUsage(m map[string]any) {
 		return
 	}
 	u.Reported = true
-	u.In = largest(u.In, m, "prompt_tokens", "input_tokens")
-	u.Out = largest(u.Out, m, "completion_tokens", "output_tokens")
-	u.Cached = largest(u.Cached, m, "cache_read_input_tokens")
-	u.Cached = largest(u.Cached, sub(m, "prompt_tokens_details"), "cached_tokens")
-	u.Cached = largest(u.Cached, sub(m, "input_tokens_details"), "cached_tokens")
+	u.In = u.largest(u.In, m, "prompt_tokens", "input_tokens")
+	u.Out = u.largest(u.Out, m, "completion_tokens", "output_tokens")
+	u.Cached = u.largest(u.Cached, m, "cache_read_input_tokens")
+	u.Cached = u.largest(u.Cached, sub(m, "prompt_tokens_details"), "cached_tokens")
+	u.Cached = u.largest(u.Cached, sub(m, "input_tokens_details"), "cached_tokens")
 }
 
 // largest returns the largest of cur and the numeric values of keys in m.
 // Streams repeat usage with growing totals, so the largest value wins.
-func largest(cur int64, m map[string]any, keys ...string) int64 {
+func (u *usage) largest(cur int64, m map[string]any, keys ...string) int64 {
 	for _, k := range keys {
-		if v, ok := num(m, k); ok {
+		v, ok, tooBig := num(m, k)
+		u.OutOfRange = u.OutOfRange || tooBig
+		if ok {
 			cur = max64(cur, v)
 		}
 	}
