@@ -98,7 +98,7 @@ func Request(ctx context.Context, url string, digest []byte, client *http.Client
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, nil, err
@@ -402,7 +402,9 @@ func parseTSTInfo(der []byte) (*TokenInfo, []byte, asn1.ObjectIdentifier, error)
 	for _, e := range f[5:] {
 		if e.Class == asn1.ClassUniversal && e.Tag == asn1.TagInteger {
 			info.Nonce = new(big.Int)
-			asn1.Unmarshal(e.FullBytes, &info.Nonce)
+			if _, err := asn1.Unmarshal(e.FullBytes, &info.Nonce); err != nil {
+				return nil, nil, nil, fmt.Errorf("nonce: %w", err)
+			}
 		}
 	}
 	return info, mi.HashedMessage, mi.HashAlgorithm.Algorithm, nil
@@ -480,24 +482,9 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 		if err != nil {
 			return nil, err
 		}
-		var md []byte
-		var ctOK bool
-		for _, a := range attrs {
-			var attr struct {
-				Type   asn1.ObjectIdentifier
-				Values asn1.RawValue `asn1:"set"`
-			}
-			if _, err := asn1.Unmarshal(a.FullBytes, &attr); err != nil {
-				return nil, err
-			}
-			switch {
-			case attr.Type.Equal(oidMessageDigest):
-				asn1.Unmarshal(attr.Values.Bytes, &md)
-			case attr.Type.Equal(oidContentType):
-				var v asn1.ObjectIdentifier
-				asn1.Unmarshal(attr.Values.Bytes, &v)
-				ctOK = v.Equal(oidTSTInfo)
-			}
+		md, ctOK, err := readSignedAttrs(attrs)
+		if err != nil {
+			return nil, err
 		}
 		if !bytes.Equal(md, contentDigest) {
 			return nil, errors.New("CMS messageDigest does not match TSTInfo")
@@ -513,4 +500,31 @@ func verifySignerInfo(der, content []byte, certs []*x509.Certificate) (*x509.Cer
 		return nil, fmt.Errorf("TSA signature invalid: %w", err)
 	}
 	return signer, nil
+}
+
+// readSignedAttrs returns the messageDigest attribute and whether the content-type
+// attribute names TSTInfo.
+func readSignedAttrs(attrs []asn1.RawValue) (md []byte, ctOK bool, err error) {
+	for _, a := range attrs {
+		var attr struct {
+			Type   asn1.ObjectIdentifier
+			Values asn1.RawValue `asn1:"set"`
+		}
+		if _, err := asn1.Unmarshal(a.FullBytes, &attr); err != nil {
+			return nil, false, err
+		}
+		switch {
+		case attr.Type.Equal(oidMessageDigest):
+			if _, err := asn1.Unmarshal(attr.Values.Bytes, &md); err != nil {
+				return nil, false, fmt.Errorf("CMS messageDigest: %w", err)
+			}
+		case attr.Type.Equal(oidContentType):
+			var v asn1.ObjectIdentifier
+			if _, err := asn1.Unmarshal(attr.Values.Bytes, &v); err != nil {
+				return nil, false, fmt.Errorf("CMS content-type: %w", err)
+			}
+			ctOK = v.Equal(oidTSTInfo)
+		}
+	}
+	return md, ctOK, nil
 }

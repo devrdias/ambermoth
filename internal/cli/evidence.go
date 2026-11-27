@@ -65,12 +65,12 @@ func (a *App) cmdPack(ctx context.Context, args []string) error {
 		return err
 	}
 	w := a.env.Stdout
-	fmt.Fprintf(w, "Evidence pack written: %s\n", *out)
-	fmt.Fprintf(w, "  %d calls, %d purposes, segment seq %d…%d (start anchored: %v, end anchored: %v)\n",
+	_, _ = fmt.Fprintf(w, "Evidence pack written: %s\n", *out)
+	_, _ = fmt.Fprintf(w, "  %d calls, %d purposes, segment seq %d…%d (start anchored: %v, end anchored: %v)\n",
 		m.Totals.All.Calls, len(m.Totals.ByPurpose), m.Segment.FirstSeq, m.Segment.LastSeq, m.Segment.StartAnchored, m.Segment.EndAnchored)
-	fmt.Fprintln(w, "  Next: write your explanation in letter-template.md (inside the zip). Don't edit summary.html:")
-	fmt.Fprintln(w, "        verify-pack re-renders it from the ledger and rejects any change. Then check it yourself:")
-	fmt.Fprintf(w, "        ambermoth verify-pack %s --report report.html\n", *out)
+	_, _ = fmt.Fprintln(w, "  Next: write your explanation in letter-template.md (inside the zip). Don't edit summary.html:")
+	_, _ = fmt.Fprintln(w, "        verify-pack re-renders it from the ledger and rejects any change. Then check it yourself:")
+	_, _ = fmt.Fprintf(w, "        ambermoth verify-pack %s --report report.html\n", *out)
 	return nil
 }
 
@@ -135,18 +135,18 @@ func (a *App) cmdVerifyPack(_ context.Context, args []string) error {
 
 func printPackReport(w io.Writer, r *pack.PackReport, reportPath string) {
 	m := r.Manifest
-	fmt.Fprintf(w, "Evidence pack verification: %s\n", status(r.OK()))
-	fmt.Fprintf(w, "  format %s · ledger %s · account %s\n  period %s → %s · %d calls\n", m.Format, m.LedgerID, m.Account, m.Period.From, m.Period.To, m.Totals.All.Calls)
-	fmt.Fprintf(w, "  files: %d checked · totals recomputed from the ledger segment\n", len(m.Files))
+	_, _ = fmt.Fprintf(w, "Evidence pack verification: %s\n", status(r.OK()))
+	_, _ = fmt.Fprintf(w, "  format %s · ledger %s · account %s\n  period %s → %s · %d calls\n", m.Format, m.LedgerID, m.Account, m.Period.From, m.Period.To, m.Totals.All.Calls)
+	_, _ = fmt.Fprintf(w, "  files: %d checked · totals recomputed from the ledger segment\n", len(m.Files))
 	if r.SummaryMatches {
-		fmt.Fprintln(w, "  summary.html: identical to a re-render from the verified ledger")
+		_, _ = fmt.Fprintln(w, "  summary.html: identical to a re-render from the verified ledger")
 	}
 	printLedgerReport(w, r.Ledger)
 	printLines(w, "  ERROR:", r.Errors)
 	printLines(w, "  warning:", r.Warnings)
 	printLines(w, "  note:", r.Notes)
 	if reportPath != "" {
-		fmt.Fprintf(w, "  report: %s (rendered by this verifier from the ledger)\n", reportPath)
+		_, _ = fmt.Fprintf(w, "  report: %s (rendered by this verifier from the ledger)\n", reportPath)
 	}
 }
 
@@ -171,7 +171,7 @@ func (a *App) cmdCheckSample(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.env.Stdout, "seq %d request:  %s\nseq %d response: %s\n", *seq, sampleResult(rb != nil, okReq), *seq, sampleResult(sb != nil, okResp))
+	_, _ = fmt.Fprintf(a.env.Stdout, "seq %d request:  %s\nseq %d response: %s\n", *seq, sampleResult(rb != nil, okReq), *seq, sampleResult(sb != nil, okResp))
 	if (rb != nil && !okReq) || (sb != nil && !okResp) {
 		return exitError(ExitFail)
 	}
@@ -216,7 +216,7 @@ func (a *App) cmdReconcile(_ context.Context, args []string) error {
 		return err
 	}
 	printLines(a.env.Stdout, " ", lines)
-	fmt.Fprintf(a.env.Stdout, "reconciliation %s, recorded at seq %d\n", strings.ToUpper(e.Str("result")), e.Seq())
+	_, _ = fmt.Fprintf(a.env.Stdout, "reconciliation %s, recorded at seq %d\n", strings.ToUpper(e.Str("result")), e.Seq())
 	return nil
 }
 
@@ -239,10 +239,10 @@ func (a *App) cmdAlerts(_ context.Context, args []string) error {
 		return writeJSON(a.env.Stdout, as)
 	}
 	if len(as) == 0 {
-		fmt.Fprintln(a.env.Stdout, "No alerts. (Alerts are advisory: they point at traffic worth explaining, not at wrongdoing.)")
+		_, _ = fmt.Fprintln(a.env.Stdout, "No alerts. (Alerts are advisory: they point at traffic worth explaining, not at wrongdoing.)")
 	}
 	for _, al := range as {
-		fmt.Fprintf(a.env.Stdout, "[review · %s] %s\n", al.Kind, al.Message)
+		_, _ = fmt.Fprintf(a.env.Stdout, "[review · %s] %s\n", al.Kind, al.Message)
 	}
 	return nil
 }
@@ -292,11 +292,11 @@ func reportFilter(from, to, provider string) (report.Filter, error) {
 
 func printSummary(w io.Writer, sum *report.Summary) {
 	t := sum.Totals
-	fmt.Fprintf(w, "%d calls · %d tokens in · %d tokens out\n\n", t.All.Calls, t.All.TokensIn, t.All.TokensOut)
-	fmt.Fprintf(w, "%-24s %10s %14s %14s %8s\n", "purpose", "calls", "tokens in", "tokens out", "retag")
+	_, _ = fmt.Fprintf(w, "%d calls · %d tokens in · %d tokens out\n\n", t.All.Calls, t.All.TokensIn, t.All.TokensOut)
+	_, _ = fmt.Fprintf(w, "%-24s %10s %14s %14s %8s\n", "purpose", "calls", "tokens in", "tokens out", "retag")
 	for _, p := range t.SortedPurposes() {
 		b := t.ByPurpose[p]
-		fmt.Fprintf(w, "%-24s %10d %14d %14d %8d\n", p, b.Calls, b.TokensIn, b.TokensOut, b.Retagged)
+		_, _ = fmt.Fprintf(w, "%-24s %10d %14d %14d %8d\n", p, b.Calls, b.TokensIn, b.TokensOut, b.Retagged)
 	}
-	fmt.Fprintf(w, "\n%d key(s), %d code link(s), %d gap(s), %d amendment(s)\n", len(sum.Keys), len(sum.CodeLinks), len(sum.Gaps), len(sum.Amendments))
+	_, _ = fmt.Fprintf(w, "\n%d key(s), %d code link(s), %d gap(s), %d amendment(s)\n", len(sum.Keys), len(sum.CodeLinks), len(sum.Gaps), len(sum.Amendments))
 }

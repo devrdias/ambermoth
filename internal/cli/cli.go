@@ -97,21 +97,21 @@ func New(env Env) *App {
 // Run executes the command line (without the program name) and returns the exit code.
 func (a *App) Run(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprint(a.env.Stderr, usage)
+		_, _ = fmt.Fprint(a.env.Stderr, usage)
 		return ExitUsage
 	}
 	name, rest := args[0], args[1:]
 	switch name {
 	case "version", "--version", "-v":
-		fmt.Fprintln(a.env.Stdout, "ambermoth", a.env.Version)
+		_, _ = fmt.Fprintln(a.env.Stdout, "ambermoth", a.env.Version)
 		return ExitOK
 	case "help", "-h", "--help":
-		fmt.Fprint(a.env.Stdout, usage)
+		_, _ = fmt.Fprint(a.env.Stdout, usage)
 		return ExitOK
 	}
 	cmd, ok := a.commands[name]
 	if !ok {
-		fmt.Fprintf(a.env.Stderr, "unknown command %q\n\n%s", name, usage)
+		_, _ = fmt.Fprintf(a.env.Stderr, "unknown command %q\n\n%s", name, usage)
 		return ExitUsage
 	}
 	return a.exitCode(cmd(ctx, rest))
@@ -127,7 +127,7 @@ func (a *App) exitCode(err error) int {
 	case errors.Is(err, errUsage):
 		return ExitUsage
 	}
-	fmt.Fprintln(a.env.Stderr, "error:", err)
+	_, _ = fmt.Fprintln(a.env.Stderr, "error:", err)
 	return ExitFail
 }
 

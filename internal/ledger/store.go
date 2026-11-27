@@ -110,7 +110,7 @@ func Open(dir string, clock Clock) (*Store, error) {
 		return nil, err
 	}
 	first, err := bufio.NewReader(f).ReadBytes('\n')
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return nil, fmt.Errorf("reading genesis: %w", err)
 	}
@@ -173,7 +173,7 @@ func readLastLine(path string, size int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	const chunk = 64 * 1024
 	end := size
 	if end > 0 {
@@ -191,7 +191,7 @@ func readLastLine(path string, size int64) ([]byte, error) {
 			return nil, err
 		}
 		buf = append(b, buf...)
-		if i := bytes.LastIndexByte(buf[:len(buf)], '\n'); i >= 0 && int64(i) < int64(len(buf)) {
+		if i := bytes.LastIndexByte(buf, '\n'); i >= 0 && int64(i) < int64(len(buf)) {
 			return bytes.TrimSpace(buf[i+1:]), nil
 		}
 	}
@@ -243,11 +243,11 @@ func (s *Store) Append(entries ...Entry) error {
 		return err
 	}
 	if _, err := f.Write(buf.Bytes()); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
@@ -265,7 +265,7 @@ func ReadFile(path string) ([]Entry, [][]byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return Read(f)
 }
 
