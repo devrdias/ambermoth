@@ -23,7 +23,9 @@ func main() {
 			Model  string `json:"model"`
 			Stream bool   `json:"stream"`
 		}
-		json.Unmarshal(body, &req)
+		if err := json.Unmarshal(body, &req); err != nil {
+			log.Printf("request body is not JSON: %v", err)
+		}
 		in := 20 + len(body)/4
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/messages") && req.Stream:
@@ -35,19 +37,19 @@ func main() {
 				`{"type":"message_stop"}`,
 			}
 			for _, ev := range events {
-				fmt.Fprintf(w, "data: %s\n\n", ev)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", ev)
 				w.(http.Flusher).Flush()
 				time.Sleep(5 * time.Millisecond)
 			}
 		case strings.HasSuffix(r.URL.Path, "/messages"):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"model":%q,"content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":%d,"output_tokens":12}}`, req.Model, in)
+			_, _ = fmt.Fprintf(w, `{"model":%q,"content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":%d,"output_tokens":12}}`, req.Model, in)
 		case strings.HasSuffix(r.URL.Path, "/embeddings"):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"model":%q,"data":[{"embedding":[0.1,0.2]}],"usage":{"prompt_tokens":%d,"total_tokens":%d}}`, req.Model, in, in)
+			_, _ = fmt.Fprintf(w, `{"model":%q,"data":[{"embedding":[0.1,0.2]}],"usage":{"prompt_tokens":%d,"total_tokens":%d}}`, req.Model, in, in)
 		default:
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"model":%q,"choices":[{"message":{"role":"assistant","content":"Hello"}}],"usage":{"prompt_tokens":%d,"completion_tokens":12}}`, req.Model, in)
+			_, _ = fmt.Fprintf(w, `{"model":%q,"choices":[{"message":{"role":"assistant","content":"Hello"}}],"usage":{"prompt_tokens":%d,"completion_tokens":12}}`, req.Model, in)
 		}
 	})
 	log.Printf("mock provider on http://%s (fake responses only)", *addr)

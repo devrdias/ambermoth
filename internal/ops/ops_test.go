@@ -37,7 +37,9 @@ func TestAnchorAndPinning(t *testing.T) {
 	auth := tsatest.New(t)
 	srv := auth.Server(t)
 	s := newStore(t)
-	s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(time.Now()), "provider": "openai"})
+	if err := s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(time.Now()), "provider": "openai"}); err != nil {
+		t.Fatal(err)
+	}
 	es, err := ops.Anchor(context.Background(), s, []string{srv.URL, "http://127.0.0.1:1/down"}, nil)
 	if len(es) != 1 || err == nil || !strings.Contains(err.Error(), "some TSAs failed") {
 		t.Fatalf("want one anchor and a partial-failure error, got %d, %v", len(es), err)
@@ -67,7 +69,9 @@ func TestAnchorAndPinning(t *testing.T) {
 	}
 	// Extra root file is added to the pool.
 	ca := filepath.Join(t.TempDir(), "ca.pem")
-	os.WriteFile(ca, auth.CAPEM, 0o600)
+	if err := os.WriteFile(ca, auth.CAPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	pool2, err := ops.TrustPool([]string{ca})
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +95,9 @@ type amendCase struct {
 
 func TestAmend(t *testing.T) {
 	s := newStore(t)
-	s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(time.Now()), "purpose": "untagged"})
+	if err := s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(time.Now()), "purpose": "untagged"}); err != nil {
+		t.Fatal(err)
+	}
 	cases := []amendCase{
 		{name: "requires a reason", from: 1, to: 1, purpose: "eval", who: "me"},
 		{name: "requires an author", from: 1, to: 1, purpose: "eval", why: "x"},
@@ -110,7 +116,9 @@ func TestAmend(t *testing.T) {
 	if err != nil || e.Str("new_purpose") != "eval-regression" {
 		t.Fatalf("amend: %v %v", e, err)
 	}
-	s.Append(ledger.Entry{"type": ledger.TypeKeyEvent, "action": "enroll", "key_fp": "sha256:x"})
+	if err := s.Append(ledger.Entry{"type": ledger.TypeKeyEvent, "action": "enroll", "key_fp": "sha256:x"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ops.Amend(s, 3, 3, "eval", "", "x", "me"); err == nil {
 		t.Error("range without call entries should be refused")
 	}
@@ -151,8 +159,12 @@ func TestLink(t *testing.T) {
 		}
 	}
 	g("init", "-q")
-	os.MkdirAll(filepath.Join(repo, "evals"), 0o755)
-	os.WriteFile(filepath.Join(repo, "evals", "run.py"), []byte("print(1)\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(repo, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "evals", "run.py"), []byte("print(1)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	g("add", ".")
 	g("commit", "-qm", "evals")
 	g("remote", "add", "origin", "https://user:token@example.com/acme/app.git")
@@ -168,7 +180,9 @@ func TestLink(t *testing.T) {
 	if e.Int("commit_count") != 1 || len(e.Str("commit")) != 40 || e.Bool("dirty") {
 		t.Errorf("bad code_link: %v", e)
 	}
-	os.WriteFile(filepath.Join(repo, "x"), []byte("x"), 0o644)
+	if err := os.WriteFile(filepath.Join(repo, "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if e, _ := ops.Link(s, "eval-regression", repo, ""); !e.Bool("dirty") {
 		t.Error("dirty tree not flagged")
 	}
@@ -180,25 +194,33 @@ func TestLink(t *testing.T) {
 func TestReconcile(t *testing.T) {
 	s := newStore(t)
 	day := time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)
-	s.Append(
+	if err := s.Append(
 		ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(day), "provider": "openai", "tokens_in": int64(100), "tokens_out": int64(10)},
 		ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(day.Add(time.Hour)), "provider": "openai", "tokens_in": int64(50), "tokens_out": int64(5)},
 		ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(day.Add(24 * time.Hour)), "provider": "openai", "tokens_in": int64(7), "tokens_out": int64(1)},
 		// A malformed ts must not panic.
 		ledger.Entry{"type": ledger.TypeCall, "ts": "bad", "provider": "openai", "tokens_in": int64(1)},
-	)
+	); err != nil {
+		t.Fatal(err)
+	}
 	csv := filepath.Join(t.TempDir(), "usage.csv")
-	os.WriteFile(csv, []byte("date,model,input_tokens,output_tokens\n2026-03-02,m,150,15\n2026-03-03T00:00:00Z,m,7,1\n"), 0o600)
+	if err := os.WriteFile(csv, []byte("date,model,input_tokens,output_tokens\n2026-03-02,m,150,15\n2026-03-03T00:00:00Z,m,7,1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	e, lines, err := ops.Reconcile(s, "openai", csv, 0.01)
 	if err != nil || e.Str("result") != "match" || len(lines) != 2 {
 		t.Fatalf("want match: %v %v %v", e, lines, err)
 	}
-	os.WriteFile(csv, []byte("date,model,input_tokens,output_tokens\n2026-03-02,m,300,15\n"), 0o600)
+	if err := os.WriteFile(csv, []byte("date,model,input_tokens,output_tokens\n2026-03-02,m,300,15\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	e, _, _ = ops.Reconcile(s, "openai", csv, 0.01)
 	if e.Str("result") != "mismatch" || e.Int("days_mismatched") != 1 {
 		t.Fatalf("want mismatch: %v", e)
 	}
-	os.WriteFile(csv, []byte("day,tokens\n"), 0o600)
+	if err := os.WriteFile(csv, []byte("day,tokens\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := ops.Reconcile(s, "openai", csv, 0.01); err == nil {
 		t.Error("CSV without required columns accepted")
 	}

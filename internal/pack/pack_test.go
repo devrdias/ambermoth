@@ -42,7 +42,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	ops.KeyEvent(s, "enroll", "sk-1", "", "anthropic", "prod", "initial", "")
+	if _, err := ops.KeyEvent(s, "enroll", "sk-1", "", "anthropic", "prod", "initial", ""); err != nil {
+		t.Fatal(err)
+	}
 	call(s, now.Add(-5*time.Hour), "production-inference", "a")
 	if _, err := ops.Anchor(context.Background(), s, []string{srv.URL}, nil); err != nil {
 		t.Fatal(err)
@@ -54,7 +56,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 			target = e
 		}
 	}
-	ops.Amend(s, target.Seq()-3, target.Seq()+6, "eval-regression", "", "nightly benchmark was untagged", "rafa")
+	if _, err := ops.Amend(s, target.Seq()-3, target.Seq()+6, "eval-regression", "", "nightly benchmark was untagged", "rafa"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ops.Anchor(context.Background(), s, []string{srv.URL}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +111,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 		for n := range files {
 			names = append(names, n)
 		}
-		pack.WriteZip(p, names, files, time.Now())
+		if err := pack.WriteZip(p, names, files, time.Now()); err != nil {
+			t.Fatal(err)
+		}
 		return p
 	}
 	cases := map[string]string{
@@ -130,7 +136,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 	// A pack built and then re-hashed consistently but with fudged totals is still caught.
 	files, _ := pack.ReadPack(out)
 	var mm pack.Manifest
-	json.Unmarshal(files["manifest.json"], &mm)
+	if err := json.Unmarshal(files["manifest.json"], &mm); err != nil {
+		t.Fatal(err)
+	}
 	mm.Totals.All.TokensIn = 1
 	nb, _ := json.MarshalIndent(mm, "", "  ")
 	files["manifest.json"] = nb
@@ -140,7 +148,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 	for n := range files {
 		names = append(names, n)
 	}
-	pack.WriteZip(p, names, files, time.Now())
+	if err := pack.WriteZip(p, names, files, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if r, _ := pack.VerifyPack(p, vo); r.OK() {
 		t.Error("fudged totals not detected")
 	}
@@ -148,8 +158,10 @@ func TestBuildAndVerifyPack(t *testing.T) {
 	// Editing summary.html AND updating its hash in the manifest is caught by
 	// the re-render check.
 	files, _ = pack.ReadPack(out)
-	files["summary.html"] = bytes.Replace(files["summary.html"], []byte("eval-regression"), []byte("production-inference"), -1)
-	json.Unmarshal(files["manifest.json"], &mm)
+	files["summary.html"] = bytes.ReplaceAll(files["summary.html"], []byte("eval-regression"), []byte("production-inference"))
+	if err := json.Unmarshal(files["manifest.json"], &mm); err != nil {
+		t.Fatal(err)
+	}
 	for i := range mm.Files {
 		if mm.Files[i].Path == "summary.html" {
 			mm.Files[i].SHA256 = ledger.SHA256Bytes(files["summary.html"])
@@ -162,7 +174,9 @@ func TestBuildAndVerifyPack(t *testing.T) {
 		names = append(names, n)
 	}
 	p2 := filepath.Join(t.TempDir(), "rehashed.zip")
-	pack.WriteZip(p2, names, files, time.Now())
+	if err := pack.WriteZip(p2, names, files, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if r, _ := pack.VerifyPack(p2, vo); r.OK() || r.SummaryMatches {
 		t.Error("summary edited and re-hashed was not detected")
 	}

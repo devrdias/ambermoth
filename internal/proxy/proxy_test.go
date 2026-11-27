@@ -45,15 +45,22 @@ func setup(t *testing.T) (*ledger.Store, *proxy.Writer, *httptest.Server, *upstr
 		case strings.HasSuffix(r.URL.Path, "/messages"):
 			w.Header().Set("Content-Type", "text/event-stream")
 			for _, chunk := range strings.SplitAfter(anthropicSSE, "\n\n") {
-				io.WriteString(w, chunk)
+				if _, err := io.WriteString(w, chunk); err != nil {
+					t.Errorf("upstream write: %v", err)
+					return
+				}
 				w.(http.Flusher).Flush()
 			}
 		case strings.Contains(string(b), `"stream":true`):
 			w.Header().Set("Content-Type", "text/event-stream")
-			io.WriteString(w, openaiSSE)
+			if _, err := io.WriteString(w, openaiSSE); err != nil {
+				t.Errorf("upstream write: %v", err)
+			}
 		default:
 			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"model":"gpt-test","usage":{"prompt_tokens":100,"completion_tokens":20}}`)
+			if _, err := io.WriteString(w, `{"model":"gpt-test","usage":{"prompt_tokens":100,"completion_tokens":20}}`); err != nil {
+				t.Errorf("upstream write: %v", err)
+			}
 		}
 	}))
 	t.Cleanup(up.Close)
@@ -64,7 +71,7 @@ func setup(t *testing.T) (*ledger.Store, *proxy.Writer, *httptest.Server, *upstr
 	}
 	w := proxy.NewWriter(s, 1000, discard)
 	w.FlushEvery = 10 * time.Millisecond
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	return s, w, up, seen
 }
 
@@ -107,7 +114,7 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return string(b)
 	}
 
@@ -185,7 +192,7 @@ func TestFailOpenWhenUpstreamDown(t *testing.T) {
 	cfg.Upstreams = map[string]proxy.Upstream{"openai": {BaseURL: "http://127.0.0.1:1", Style: "openai"}}
 	w := proxy.NewWriter(s, 10, discard)
 	w.FlushEvery = 5 * time.Millisecond
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	p, _ := proxy.New(cfg, s, w, nil, discard)
 	srv := httptest.NewServer(p)
 	defer srv.Close()
@@ -193,7 +200,7 @@ func TestFailOpenWhenUpstreamDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 502 {
 		t.Fatalf("want 502, got %d", resp.StatusCode)
 	}
@@ -210,7 +217,7 @@ func TestGapEntryAfterDrops(t *testing.T) {
 	for i := 0; i < 5; i++ { // queue of 1, writer not running: 4 dropped
 		w.Enqueue(ledger.Entry{"type": ledger.TypeCall})
 	}
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	w.Close()
 	es, _ := s.Entries()
 	var gap ledger.Entry

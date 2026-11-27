@@ -64,7 +64,9 @@ func TestAppendAndVerify(t *testing.T) {
 func TestTamperDetection(t *testing.T) {
 	s := newTestStore(t)
 	for i := 0; i < 5; i++ {
-		s.Append(ledger.Entry{"type": ledger.TypeCall, "purpose": "eval-regression", "tokens_in": 100})
+		if err := s.Append(ledger.Entry{"type": ledger.TypeCall, "purpose": "eval-regression", "tokens_in": 100}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
 	}
 	orig, _ := os.ReadFile(s.LedgerPath())
 
@@ -86,12 +88,16 @@ func TestTamperDetection(t *testing.T) {
 		},
 	}
 	for name, mut := range cases {
-		os.WriteFile(s.LedgerPath(), mut(orig), 0o600)
+		if err := os.WriteFile(s.LedgerPath(), mut(orig), 0o600); err != nil {
+			t.Fatalf("%s: write: %v", name, err)
+		}
 		if r := verifyFile(t, s); r.OK() {
 			t.Errorf("%s: tampering not detected", name)
 		}
 	}
-	os.WriteFile(s.LedgerPath(), orig, 0o600)
+	if err := os.WriteFile(s.LedgerPath(), orig, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if r := verifyFile(t, s); !r.OK() {
 		t.Fatalf("restored ledger should verify: %v", r.Errors)
 	}
@@ -99,7 +105,9 @@ func TestTamperDetection(t *testing.T) {
 
 func TestWrongKeyRejected(t *testing.T) {
 	s := newTestStore(t)
-	os.WriteFile(s.Dir+"/"+ledger.KeyFile, []byte(strings.Repeat("ab", 32)), 0o600)
+	if err := os.WriteFile(s.Dir+"/"+ledger.KeyFile, []byte(strings.Repeat("ab", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ledger.Open(s.Dir, time.Now); err == nil {
 		t.Fatal("expected key commitment mismatch")
 	}
@@ -110,11 +118,19 @@ func TestWrongKeyRejected(t *testing.T) {
 func TestAnchorLag(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().UTC()
-	s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(now.Add(-72 * time.Hour))})
-	s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(now.Add(-time.Minute))})
+	if err := s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(now.Add(-72 * time.Hour))}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Append(ledger.Entry{"type": ledger.TypeCall, "ts": ledger.FormatTime(now.Add(-time.Minute))}); err != nil {
+		t.Fatal(err)
+	}
 	_, head, _ := s.Head()
-	s.Append(ledger.Entry{"type": ledger.TypeAnchor, "target_seq": int64(2), "target_hash": head, "token_file": "t.tsr", "token_sha256": ledger.SHA256Bytes([]byte("tok"))})
-	os.WriteFile(s.Dir+"/"+ledger.AnchorDir+"/t.tsr", []byte("tok"), 0o600)
+	if err := s.Append(ledger.Entry{"type": ledger.TypeAnchor, "target_seq": int64(2), "target_hash": head, "token_file": "t.tsr", "token_sha256": ledger.SHA256Bytes([]byte("tok"))}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.Dir+"/"+ledger.AnchorDir+"/t.tsr", []byte("tok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	es, lines, _ := ledger.ReadFile(s.LedgerPath())
 	r := ledger.Verify(es, lines, ledger.VerifyOptions{AnchorDir: s.Dir + "/" + ledger.AnchorDir,
 		CheckAnchor: func([]byte, string) (ledger.AnchorCheck, error) {

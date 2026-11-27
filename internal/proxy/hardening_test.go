@@ -25,21 +25,29 @@ func TestWebSocketUpgradeIsRecorded(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		defer conn.Close()
-		brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
-		brw.Flush()
+		defer func() { _ = conn.Close() }()
+		if _, err := brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := brw.Flush(); err != nil {
+			t.Error(err)
+			return
+		}
 		buf := make([]byte, 5)
 		if _, err := io.ReadFull(brw, buf); err != nil {
 			return
 		}
-		conn.Write([]byte("echo:" + string(buf)))
+		if _, err := conn.Write([]byte("echo:" + string(buf))); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer up.Close()
 
 	s, _ := ledger.Init(t.TempDir(), "test", time.Now)
 	w := proxy.NewWriter(s, 100, discard)
 	w.FlushEvery = 5 * time.Millisecond
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	cfg := proxy.DefaultConfig()
 	cfg.Upstreams = map[string]proxy.Upstream{"openai": {BaseURL: up.URL, Style: "openai"}}
 	p, _ := proxy.New(cfg, s, w, nil, discard)
@@ -50,18 +58,22 @@ func TestWebSocketUpgradeIsRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.WriteString(conn, "GET /openai/v1/realtime?model=m HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nAuthorization: Bearer sk-ws\r\n\r\n")
+	if _, err := io.WriteString(conn, "GET /openai/v1/realtime?model=m HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nAuthorization: Bearer sk-ws\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
 	if err != nil || resp.StatusCode != 101 {
 		t.Fatalf("no upgrade: %v %v", resp, err)
 	}
-	io.WriteString(conn, "hello")
+	if _, err := io.WriteString(conn, "hello"); err != nil {
+		t.Fatal(err)
+	}
 	got := make([]byte, 10)
 	if _, err := io.ReadFull(br, got); err != nil || string(got) != "echo:hello" {
 		t.Fatalf("echo: %q %v", got, err)
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -92,7 +104,7 @@ func TestEnqueueAfterCloseIsSafe(t *testing.T) {
 	s, _ := ledger.Init(t.TempDir(), "test", time.Now)
 	w := proxy.NewWriter(s, 4, discard)
 	w.FlushEvery = time.Millisecond
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
@@ -145,7 +157,7 @@ func TestAutoEnrollRetriedAfterDrop(t *testing.T) {
 	p, _ := proxy.New(cfg, s, w, nil, discard)
 	w.Enqueue(ledger.Entry{"type": ledger.TypeCall}) // fill the queue
 	p.MaybeEnroll("sha256:k", "openai")              // dropped
-	go w.Run(context.Background())
+	go func() { _ = w.Run(context.Background()) }()
 	time.Sleep(20 * time.Millisecond)
 	p.MaybeEnroll("sha256:k", "openai") // retried
 	p.MaybeEnroll("sha256:k", "openai") // now known: no third entry
@@ -222,12 +234,16 @@ func TestWebSocketCloseCountsWriteInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	io.WriteString(conn, "GET /openai/v1/realtime HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+	if _, err := io.WriteString(conn, "GET /openai/v1/realtime HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
 	br := bufio.NewReader(conn)
 	if resp, err := http.ReadResponse(br, nil); err != nil || resp.StatusCode != 101 {
 		t.Fatalf("no upgrade: %v %v", resp, err)
 	}
-	io.WriteString(conn, "hello")
+	if _, err := io.WriteString(conn, "hello"); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-hc.entered:
 	case <-time.After(3 * time.Second):

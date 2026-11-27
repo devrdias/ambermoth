@@ -15,7 +15,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,7 +96,7 @@ func readProfile(path, module string) (map[string][]block, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	out := map[string][]block{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -188,7 +187,7 @@ func score(fset *token.FileSet, file string, fn *ast.FuncDecl, bs []block) funcS
 	cc := complexity(fn)
 	c := float64(cc)
 	return funcScore{file: file, line: start, name: funcName(fn), complexity: cc, coverage: cov,
-		crap: c*c*math.Pow(1-cov, 3) + c}
+		crap: c*c*(1-cov)*(1-cov)*(1-cov) + c}
 }
 
 func funcName(fn *ast.FuncDecl) string {
