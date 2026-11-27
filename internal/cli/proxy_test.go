@@ -143,7 +143,7 @@ func TestProxyRecordsCallsAndPacksThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if code := stop(); code != cli.ExitOK {
 		t.Fatalf("proxy exit code %d", code)
 	}

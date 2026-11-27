@@ -61,8 +61,12 @@ func New(t testing.TB) *TestAuthority {
 	}
 	dir := t.TempDir()
 	cfg := strings.ReplaceAll(tsCfg, "$dir", dir)
-	os.WriteFile(filepath.Join(dir, "ts.cnf"), []byte(cfg), 0o600)
-	os.WriteFile(filepath.Join(dir, "serial"), []byte("01\n"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "ts.cnf"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "serial"), []byte("01\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	run(t, dir, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
 		"-keyout", "ca.key", "-out", "ca.crt", "-subj", "/CN=Test Root", "-days", "30",
 		"-config", "ts.cnf", "-extensions", "v3_ca")
@@ -84,7 +88,9 @@ func New(t testing.TB) *TestAuthority {
 func (a *TestAuthority) Reply(t testing.TB, reqDER []byte) []byte {
 	t.Helper()
 	q := filepath.Join(a.dir, "q.tsq")
-	os.WriteFile(q, reqDER, 0o600)
+	if err := os.WriteFile(q, reqDER, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	run(t, a.dir, "ts", "-reply", "-config", "ts.cnf", "-queryfile", "q.tsq",
 		"-inkey", "tsa.key", "-signer", "tsa.crt", "-out", "r.tsr")
 	b, err := os.ReadFile(filepath.Join(a.dir, "r.tsr"))
@@ -102,7 +108,9 @@ func (a *TestAuthority) Server(t testing.TB) *httptest.Server {
 		defer mu.Unlock()
 		b, _ := io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/timestamp-reply")
-		w.Write(a.Reply(t, b))
+		if _, err := w.Write(a.Reply(t, b)); err != nil {
+			t.Errorf("tsa reply: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 	return srv

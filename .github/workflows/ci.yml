@@ -18,6 +18,15 @@ jobs:
       - run: make rules
       - run: GOOS=darwin go build ./... && GOOS=windows go build ./...
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # golangci-lint needs a current Go; the module itself still targets 1.22 (test job).
+      - uses: actions/setup-go@v7
+        with: { go-version: stable }
+      - run: make lint
+
   architecture:
     runs-on: ubuntu-latest
     steps:
@@ -46,7 +55,7 @@ jobs:
   # GoReleaser builds the binaries, writes the notes and publishes the GitHub
   # release. Nothing is committed to the repository. No Node involved.
   release:
-    needs: [test, architecture, release-check]
+    needs: [test, lint, architecture, release-check]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency: { group: release, cancel-in-progress: false }
