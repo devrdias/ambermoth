@@ -8,9 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -197,13 +196,30 @@ func writeObject(b *bytes.Buffer, m map[string]any) error {
 	return nil
 }
 
+// sortedKeys orders keys by UTF-16 code units (RFC 8785). For ASCII keys that
+// is plain byte order, which is what almost every ledger key uses.
 func sortedKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
+	ascii := true
 	for k := range m {
 		keys = append(keys, k)
+		ascii = ascii && isASCII(k)
 	}
-	sort.Slice(keys, func(i, j int) bool { return utf16Less(keys[i], keys[j]) })
+	if ascii {
+		slices.Sort(keys)
+		return keys
+	}
+	slices.SortFunc(keys, utf16Compare)
 	return keys
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
 
 func writeArray(b *bytes.Buffer, a []any) error {
@@ -264,12 +280,33 @@ func shortEscape(r rune) (string, bool) {
 	return "", false
 }
 
-func utf16Less(a, b string) bool {
-	ua, ub := utf16.Encode([]rune(a)), utf16.Encode([]rune(b))
-	for i := 0; i < len(ua) && i < len(ub); i++ {
-		if ua[i] != ub[i] {
-			return ua[i] < ub[i]
+// utf16Compare orders a and b by their UTF-16 code units without encoding
+// them. Invalid bytes count as U+FFFD, as they do in a []rune conversion.
+func utf16Compare(a, b string) int {
+	for a != "" && b != "" {
+		ra, na := utf8.DecodeRuneInString(a)
+		rb, nb := utf8.DecodeRuneInString(b)
+		if ra != rb {
+			return compareRunes(ra, rb)
 		}
+		a, b = a[na:], b[nb:]
 	}
-	return len(ua) < len(ub)
+	return len(a) - len(b)
+}
+
+// compareRunes orders two different runes by their UTF-16 encodings. A
+// supplementary rune starts with a surrogate (D800-DBFF), so it sorts before
+// BMP runes from U+E000 up even though its code point is larger.
+func compareRunes(a, b rune) int {
+	if ua, ub := firstUnit(a), firstUnit(b); ua != ub {
+		return int(ua - ub)
+	}
+	return int(a - b)
+}
+
+func firstUnit(r rune) rune {
+	if r < 0x10000 {
+		return r
+	}
+	return 0xD800 + (r-0x10000)>>10
 }
