@@ -202,3 +202,78 @@ func TestNewRejectsAnUnparsableBaseURL(t *testing.T) {
 		t.Fatal("New accepted an unparsable base URL")
 	}
 }
+
+type purposeFieldCase struct {
+	name    string
+	content string
+	wantErr string // empty = must load
+}
+
+// Purposes in the config go through the same check as the header, so a typo
+// fails at start-up instead of reaching the ledger.
+func TestLoadConfigChecksPurposes(t *testing.T) {
+	const where = "docs/SPEC.md"
+	cases := []purposeFieldCase{
+		{"default_purpose in the taxonomy", `{"default_purpose":"dev-experiment"}`, ""},
+		{"default_purpose custom tag", `{"default_purpose":"x-nightly"}`, ""},
+		{"default_purpose untagged", `{"default_purpose":"untagged"}`, ""},
+		{"default_purpose empty means untagged", `{"default_purpose":""}`, ""},
+		{"default_purpose unknown", `{"default_purpose":"bogus"}`, `default_purpose "bogus"`},
+		{"default_purpose is case sensitive", `{"default_purpose":"Batch-Job"}`, `default_purpose "Batch-Job"`},
+		{"default_purpose bare x-", `{"default_purpose":"x-"}`, `default_purpose "x-"`},
+		{"default_purpose other-declared", `{"default_purpose":"other-declared"}`, `default_purpose "other-declared"`},
+		{"route purpose in the taxonomy", `{"routes":[{"prefix":"/v1","purpose":"rag-query"}]}`, ""},
+		{"route purpose custom tag", `{"routes":[{"prefix":"/v1","purpose":"x-a"}]}`, ""},
+		{"route purpose untagged", `{"routes":[{"prefix":"/v1","purpose":"untagged"}]}`, ""},
+		{"route purpose unknown", `{"routes":[{"prefix":"/v1","purpose":"bogus"}]}`, `routes[0].purpose "bogus"`},
+		{"route purpose empty", `{"routes":[{"prefix":"/v1"}]}`, `routes[0].purpose ""`},
+		{"second route is named by position", `{"routes":[{"prefix":"/a","purpose":"batch-job"},{"prefix":"/b","purpose":"nope"}]}`, `routes[1].purpose "nope"`},
+		{"route purpose other-declared", `{"routes":[{"prefix":"/v1","purpose":"other-declared"}]}`, `routes[0].purpose "other-declared"`},
+		{"key default in the taxonomy", `{"key_defaults":{"sha256:abc":"production-inference"}}`, ""},
+		{"key default custom tag", `{"key_defaults":{"sha256:abc":"x-ci"}}`, ""},
+		{"key default unknown", `{"key_defaults":{"sha256:abc":"bogus"}}`, `key_defaults["sha256:abc"] "bogus"`},
+		{"key default empty", `{"key_defaults":{"sha256:abc":""}}`, `key_defaults["sha256:abc"] ""`},
+		{"key default other-declared", `{"key_defaults":{"sha256:abc":"other-declared"}}`, `key_defaults["sha256:abc"] "other-declared"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := proxy.LoadConfig(writeConfig(t, tc.content))
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("a valid config was rejected: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), where) {
+				t.Fatalf("error = %v, want one naming %s and %s", err, tc.wantErr, where)
+			}
+		})
+	}
+}
+
+func TestLoadConfigPurposeErrorsText(t *testing.T) {
+	cases := []configErrCase{
+		{"unknown", `{"default_purpose":"bogus"}`,
+			`default_purpose "bogus": not a purpose tag; use one of production-inference, eval-regression, eval-benchmark, rag-indexing, rag-query, batch-job, dev-experiment, untagged or an x- tag (docs/SPEC.md §5)`},
+		{"other-declared", `{"routes":[{"prefix":"/v1","purpose":"other-declared"}]}`,
+			`routes[0].purpose "other-declared": other-declared needs a note and a config has none; send it in the X-Provenance-Purpose and X-Provenance-Note headers (docs/SPEC.md §5)`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := proxy.LoadConfig(writeConfig(t, tc.content))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want one containing\n%s", err, tc.want)
+			}
+		})
+	}
+}
+
+// Several bad purposes are reported in the same order on every run.
+func TestLoadConfigPurposeErrorIsStable(t *testing.T) {
+	path := writeConfig(t, `{"key_defaults":{"sha256:b":"bad","sha256:a":"bad","sha256:c":"bad"}}`)
+	for range 20 {
+		if _, err := proxy.LoadConfig(path); err == nil || !strings.Contains(err.Error(), `["sha256:a"]`) {
+			t.Fatalf("error = %v, want the first key in order", err)
+		}
+	}
+}

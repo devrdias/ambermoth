@@ -153,9 +153,6 @@ func TestPurposeResolutionWithoutHeader(t *testing.T) {
 			proxy.RouteRule{Upstream: "anthropic", Prefix: "/v1", Purpose: "batch-job"},
 			proxy.RouteRule{Prefix: "/v1", Purpose: "rag-query"}),
 			path: "/v1/embeddings", want: "rag-query"},
-		{name: "rule purpose is not validated", tune: purposeRoutes(proxy.RouteRule{Prefix: "/v1", Purpose: "bogus"}),
-			path: "/v1/embeddings", want: "bogus"},
-		{name: "default purpose is not validated", tune: purposeConfig("bogus", ""), path: "/v1/embeddings", want: "bogus"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { runPurposeCase(t, tc) })

@@ -181,7 +181,7 @@ func (c *call) checkHeaderPurpose() {
 		c.purpose = "untagged"
 		return
 	}
-	if c.purpose == "other-declared" && c.note == "" {
+	if c.purpose == otherDeclared && c.note == "" {
 		c.note = "other-declared without a note"
 	}
 }

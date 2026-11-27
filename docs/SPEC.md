@@ -221,6 +221,14 @@ Resolution order for a call: `X-Provenance-Purpose` header → route rule
 default → `untagged`. An invalid header value is recorded as `untagged` with
 `note: "invalid purpose header: <value>"` — never rejected (fail open).
 
+Purposes in `config.json` (`default_purpose`, the `purpose` of each route rule,
+the values of `key_defaults`) are checked when the config loads, with the same
+rule as the header: a taxonomy tag, `untagged` or an `x-` tag. `other-declared`
+is refused there, because it needs a note and a config has none. An empty
+`default_purpose` means `untagged`. A config with any other value does not
+load, and `ambermoth proxy` refuses to start; the error names the field and the
+value.
+
 ## 6. Proxy behaviour
 
 ### 6.1 Routing
