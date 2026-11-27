@@ -102,16 +102,22 @@ func (a *TestAuthority) Reply(t testing.TB, reqDER []byte) []byte {
 
 // Server starts an HTTP TSA endpoint backed by this authority.
 func (a *TestAuthority) Server(t testing.TB) *httptest.Server {
+	srv := httptest.NewServer(a.Handler(t, "application/timestamp-reply"))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Handler answers each POSTed TimeStampReq with a signed reply of the given
+// content type.
+func (a *TestAuthority) Handler(t testing.TB, contentType string) http.Handler {
 	var mu sync.Mutex
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		b, _ := io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/timestamp-reply")
+		w.Header().Set("Content-Type", contentType)
 		if _, err := w.Write(a.Reply(t, b)); err != nil {
 			t.Errorf("tsa reply: %v", err)
 		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	})
 }
