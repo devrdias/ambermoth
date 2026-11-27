@@ -52,6 +52,17 @@ type Options struct {
 	Out           string
 	Generator     string
 	Client        *http.Client
+
+	verify verifyFunc // nil means ledger.Verify; tests count the calls
+}
+
+type verifyFunc func([]ledger.Entry, [][]byte, ledger.VerifyOptions) *ledger.Report
+
+func (o Options) verifier() verifyFunc {
+	if o.verify == nil {
+		return ledger.Verify
+	}
+	return o.verify
 }
 
 // Period is the human period (inclusive dates).
@@ -114,7 +125,7 @@ func Build(ctx context.Context, s *ledger.Store, o Options) (*Manifest, error) {
 		return nil, err
 	}
 	m := c.manifest(s, o, disclosed)
-	if err := addReadables(files, m, c.summary(f), ledger.Verify(c.seg, c.segLines, src.check)); err != nil {
+	if err := addReadables(files, m, c.summary(f), src.segmentReport(c)); err != nil {
 		return nil, err
 	}
 	names, err := addManifest(ctx, files, m, o)
@@ -130,6 +141,7 @@ type source struct {
 	lines   [][]byte
 	full    *ledger.Report
 	check   ledger.VerifyOptions
+	verify  verifyFunc
 }
 
 func readSource(s *ledger.Store, o Options) (*source, error) {
@@ -138,11 +150,11 @@ func readSource(s *ledger.Store, o Options) (*source, error) {
 		return nil, err
 	}
 	check := ledger.VerifyOptions{AnchorDir: anchorDir(s), CheckAnchor: ops.AnchorVerifier(o.Roots, o.AllowUnpinned)}
-	full := ledger.Verify(entries, lines, check)
+	full := o.verifier()(entries, lines, check)
 	if !full.OK() || !full.StartsAtGenesis {
 		return nil, fmt.Errorf("the ledger does not verify; refusing to build a pack from it:\n  %s", strings.Join(full.Errors, "\n  "))
 	}
-	return &source{entries: entries, lines: lines, full: full, check: check}, nil
+	return &source{entries: entries, lines: lines, full: full, check: check, verify: o.verifier()}, nil
 }
 
 // chooseSpan picks the segment for the calls f matches.
@@ -153,6 +165,15 @@ func (src *source) chooseSpan(f report.Filter) (span, error) {
 	}
 	last := lastRelevantSeq(src.entries, f, firstCall, lastCall)
 	return selectSpan(src.full.Anchors, len(src.entries), firstCall, last), nil
+}
+
+// segmentReport is the verification report for the segment c carries. When the
+// segment is the whole ledger that is the report readSource already has.
+func (src *source) segmentReport(c cut) *ledger.Report {
+	if c.start == 0 && c.end == int64(len(src.entries)-1) {
+		return src.full
+	}
+	return src.verify(c.seg, c.segLines, src.check)
 }
 
 // cut is the part of the ledger a pack carries: the segment, and the context
