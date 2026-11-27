@@ -4,7 +4,7 @@
 - Any change to hashing, canonical form, entry fields or the pack layout is a format change. Update `docs/SPEC.md` in the same PR, and bump the format version when compatibility breaks.
 - Never add a feature that edits or deletes existing ledger entries. Corrections are new entries.
 - Go code follows [docs/go-rules.md](docs/go-rules.md), including [ub-mode](https://github.com/unclebob/ub-mode). The skill is in `.claude/skills/ub-mode/` (MIT, © Robert C. Martin).
-- Run `make check` before sending a PR. The TSA tests need `openssl` on PATH.
+- Run `make check`, `make rules` and `make crap` before sending a PR. The TSA tests need `openssl` on PATH.
 
 ## Commit messages and releases
 
