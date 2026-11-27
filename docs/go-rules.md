@@ -148,8 +148,7 @@ make lint      # golangci-lint with its default linters
 make mutate    # gremlins mutation testing
 ```
 
-CI runs `make check` and `make rules`. `make crap` still fails on older functions (ROADMAP M1);
-new code must not add to that list.
+CI runs `make check`, `make rules` and `make crap`. Every function stays under CRAP 10.
 
 ## 10. Naming
 

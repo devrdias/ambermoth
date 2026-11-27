@@ -58,11 +58,11 @@ flowchart LR
 ## M1: Hardening (in progress)
 
 - [x] Go rules applied ([docs/go-rules.md](docs/go-rules.md)): rule checker clean, black-box tests, injected clock and logger
-- [ ] Every function under CRAP 10 (`make crap`; 4 left) (good first task)
+- [x] Every function under CRAP 10 (`make crap`)
 - [x] CI runs `make rules`
 - [x] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
 - [x] `make lint` clean, and CI runs it
-- [ ] CI runs `make crap` once it passes
+- [x] CI runs `make crap`
 - [ ] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
 - [ ] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
 - [ ] Write-ahead durability mode
@@ -102,7 +102,7 @@ Comment on, or open, the matching issue so work isn't duplicated.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for commits and releases, [docs/go-rules.md](docs/go-rules.md) for code
 and [docs/SPEC.md](docs/SPEC.md) for formats.
 
-Send a small PR: tests first, `make check` and `make rules` green, one Conventional Commit per change.
+Send a small PR: tests first, `make check`, `make rules` and `make crap` green, one Conventional Commit per change.
 
 Changing a format (ledger or pack) or adding a dependency starts with a design note or an ADR in
 `docs/`, before code.

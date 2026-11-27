@@ -15,7 +15,7 @@ What follows is what agents get wrong most.
 ## Code
 
 - The core module uses the standard library only; a new dependency needs an ADR in `docs/adr/`.
-- Run `make check` and `make rules` before committing.
+- Run `make check`, `make rules` and `make crap` before committing.
 - Never add code that edits or deletes existing ledger entries. Corrections are new entries.
 
 ## Writing
