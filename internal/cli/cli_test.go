@@ -153,3 +153,26 @@ func TestDirFromEnvironment(t *testing.T) {
 		t.Fatalf("ledger not created in $AMBERMOTH_DIR: %v", err)
 	}
 }
+
+// A ledger file that is valid JSON but not an object is an error for every
+// command that reads it, not a crash.
+func TestCommandsOnLedgerLinesThatAreNotObjects(t *testing.T) {
+	notObjects := []string{"[1]", `"x"`, "3", "null", "true"}
+	for _, line := range notObjects {
+		t.Run(line, func(t *testing.T) {
+			h := newHarness(t)
+			h.check(t, runCase{args: []string{"init"}, wantCode: cli.ExitOK})
+			path := filepath.Join(h.dir, ledger.LedgerFile)
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(b, []byte(line+"\n")...), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			h.check(t, runCase{args: []string{"verify"}, wantCode: cli.ExitFail, wantOut: "not valid JSON object"})
+			h.check(t, runCase{args: []string{"report"}, wantCode: cli.ExitFail, wantErr: "last ledger line is not a JSON object"})
+			h.check(t, runCase{args: []string{"key", "enroll", "--provider", "openai", "--key-env", "K"}, wantCode: cli.ExitFail, wantErr: "last ledger line is not a JSON object"})
+		})
+	}
+}
