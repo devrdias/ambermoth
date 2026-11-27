@@ -18,11 +18,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/devrdias/ambermoth/internal/ledger"
 	"github.com/devrdias/ambermoth/internal/proxy"
-	"github.com/devrdias/ambermoth/internal/report"
 	"github.com/devrdias/ambermoth/internal/trust"
 	"github.com/devrdias/ambermoth/internal/tsa"
 )
@@ -295,8 +293,9 @@ func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (le
 	if err != nil {
 		return nil, nil, err
 	}
-	cmp := compareDays(days, exp, dayTotals(entries, provider, exp), tolerance)
-	e := reconciliationEntry(provider, raw, days, periodTotals(entries, provider, days), cmp, tolerance)
+	led := dayTotals(entries, provider, days[0], days[len(days)-1])
+	cmp := compareDays(unionDays(days, led), exp, led, tolerance)
+	e := reconciliationEntry(provider, raw, days, sumTallies(led), cmp, tolerance)
 	return e, cmp.lines, s.Append(e)
 }
 
@@ -362,15 +361,17 @@ func sortedDays(exp map[string]*tally) []string {
 	return days
 }
 
-// dayTotals sums the provider's calls on the days the export has rows for.
-func dayTotals(entries []ledger.Entry, provider string, exp map[string]*tally) map[string]*tally {
+// dayTotals sums the provider's calls per day from the day first to the day
+// last, both inclusive. The period is the export's first to last day, so a
+// day in it with calls but no export row is still compared.
+func dayTotals(entries []ledger.Entry, provider, first, last string) map[string]*tally {
 	led := map[string]*tally{}
 	for _, e := range entries {
 		if e == nil || e.Type() != ledger.TypeCall || e.Str("provider") != provider {
 			continue
 		}
 		d := e.Day()
-		if exp[d] == nil {
+		if d < first || d > last {
 			continue
 		}
 		if led[d] == nil {
@@ -382,13 +383,25 @@ func dayTotals(entries []ledger.Entry, provider string, exp map[string]*tally) m
 	return led
 }
 
-// periodTotals sums the provider's calls from the first export day to the
-// end of the last. A day that does not parse is a zero time.
-func periodTotals(entries []ledger.Entry, provider string, days []string) tally {
-	from, _ := time.Parse("2006-01-02", days[0])
-	to, _ := time.Parse("2006-01-02", days[len(days)-1])
-	sum := report.Summarize(entries, report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: provider})
-	return tally{sum.Totals.All.TokensIn, sum.Totals.All.TokensOut}
+// unionDays returns the days of the export and of the ledger, sorted.
+func unionDays(days []string, led map[string]*tally) []string {
+	all := map[string]*tally{}
+	for _, d := range days {
+		all[d] = nil
+	}
+	for d := range led {
+		all[d] = nil
+	}
+	return sortedDays(all)
+}
+
+func sumTallies(m map[string]*tally) tally {
+	var sum tally
+	for _, t := range m {
+		sum.in += t.in
+		sum.out += t.out
+	}
+	return sum
 }
 
 // comparison is the per-day result of checking the ledger against the export.
@@ -401,18 +414,21 @@ type comparison struct {
 func compareDays(days []string, exp, led map[string]*tally, tolerance float64) comparison {
 	var c comparison
 	for _, d := range days {
-		l := led[d]
+		l, x := led[d], exp[d]
 		if l == nil {
 			l = &tally{}
 		}
-		c.export.in += exp[d].in
-		c.export.out += exp[d].out
+		if x == nil {
+			x = &tally{}
+		}
+		c.export.in += x.in
+		c.export.out += x.out
 		status := "ok"
-		if outside(l.in, exp[d].in, tolerance) || outside(l.out, exp[d].out, tolerance) {
+		if outside(l.in, x.in, tolerance) || outside(l.out, x.out, tolerance) {
 			status = "MISMATCH"
 			c.mismatched++
 		}
-		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, exp[d].in, exp[d].out, status))
+		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, x.in, x.out, status))
 	}
 	return c
 }

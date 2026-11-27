@@ -136,21 +136,79 @@ var reconcileCases = []reconcileCase{
 		ledgerIn: 100, ledgerOut: 10, exportIn: 140, exportOut: 14, from: "2026-03-02", to: "2026-03-03",
 	},
 	{
-		// The day is inside the period but has no export row, so it is not
-		// compared. Its calls still count in the ledger totals of the entry.
-		name: "a ledger day missing from the export is not compared",
+		name: "a ledger day missing from the export is a mismatch with export totals of zero",
 		csv:  csvHead + "2026-03-02,m,100,10\n2026-03-04,m,5,1\n",
 		calls: []ledgerCall{
 			{day2, "openai", 100, 10},
 			{day3, "openai", 1000, 100},
 			{day4, "openai", 5, 1},
 		},
-		tolerance: 0.02, result: "match",
+		tolerance: 0.02, result: "mismatch", mismatched: 1,
 		lines: []string{
 			"2026-03-02  ledger in/out 100/10  export in/out 100/10  ok",
+			"2026-03-03  ledger in/out 1000/100  export in/out 0/0  MISMATCH",
 			"2026-03-04  ledger in/out 5/1  export in/out 5/1  ok",
 		},
 		ledgerIn: 1105, ledgerOut: 111, exportIn: 105, exportOut: 11, from: "2026-03-02", to: "2026-03-04",
+	},
+	{
+		name: "ledger days just outside the first and last export day are not flagged, those inside are",
+		csv:  csvHead + "2026-03-03,m,1,1\n2026-03-05,m,1,1\n",
+		calls: []ledgerCall{
+			{"2026-03-02T23:59:59.999Z", "openai", 50, 5},
+			{day3, "openai", 1, 1},
+			{day4, "openai", 2, 2},
+			{"2026-03-05T10:00:00.000Z", "openai", 1, 1},
+			{"2026-03-06T00:00:00.000Z", "openai", 60, 6},
+		},
+		tolerance: 0.02, result: "mismatch", mismatched: 1,
+		lines: []string{
+			"2026-03-03  ledger in/out 1/1  export in/out 1/1  ok",
+			"2026-03-04  ledger in/out 2/2  export in/out 0/0  MISMATCH",
+			"2026-03-05  ledger in/out 1/1  export in/out 1/1  ok",
+		},
+		ledgerIn: 4, ledgerOut: 4, exportIn: 2, exportOut: 2, from: "2026-03-03", to: "2026-03-05",
+	},
+	{
+		name: "a ledger day missing from the export is a mismatch at any tolerance",
+		csv:  csvHead + "2026-03-02,m,100,10\n2026-03-04,m,100,10\n",
+		calls: []ledgerCall{
+			{day2, "openai", 100, 10}, {day3, "openai", 1, 0}, {day4, "openai", 100, 10},
+		},
+		tolerance: 5, result: "mismatch", mismatched: 1,
+		lines: []string{
+			"2026-03-02  ledger in/out 100/10  export in/out 100/10  ok",
+			"2026-03-03  ledger in/out 1/0  export in/out 0/0  MISMATCH",
+			"2026-03-04  ledger in/out 100/10  export in/out 100/10  ok",
+		},
+		ledgerIn: 201, ledgerOut: 20, exportIn: 200, exportOut: 20, from: "2026-03-02", to: "2026-03-04",
+	},
+	{
+		name: "a ledger day missing from the export whose calls carry no tokens is ok",
+		csv:  csvHead + "2026-03-02,m,100,10\n2026-03-04,m,100,10\n",
+		calls: []ledgerCall{
+			{day2, "openai", 100, 10}, {day3, "openai", 0, 0}, {day4, "openai", 100, 10},
+		},
+		tolerance: 0.02, result: "match",
+		lines: []string{
+			"2026-03-02  ledger in/out 100/10  export in/out 100/10  ok",
+			"2026-03-03  ledger in/out 0/0  export in/out 0/0  ok",
+			"2026-03-04  ledger in/out 100/10  export in/out 100/10  ok",
+		},
+		ledgerIn: 200, ledgerOut: 20, exportIn: 200, exportOut: 20, from: "2026-03-02", to: "2026-03-04",
+	},
+	{
+		name: "another provider's calls on a missing day are not flagged",
+		csv:  csvHead + "2026-03-02,m,1,1\n2026-03-04,m,1,1\n",
+		calls: []ledgerCall{
+			{day2, "openai", 1, 1}, {day3, "anthropic", 900, 90}, {day4, "openai", 1, 1},
+		},
+		tolerance: 0.02, result: "match",
+		lines: []string{
+			"2026-03-02  ledger in/out 1/1  export in/out 1/1  ok",
+			"2026-03-04  ledger in/out 1/1  export in/out 1/1  ok",
+		},
+		ledgerIn: 2, ledgerOut: 2, exportIn: 2, exportOut: 2, from: "2026-03-02", to: "2026-03-04",
 	},
 	{
 		name: "ledger calls outside the exported period are left out",
@@ -239,7 +297,7 @@ var reconcileCases = []reconcileCase{
 		ledgerIn: 0, ledgerOut: 0, exportIn: 5, exportOut: 5, from: "garbage", to: "garbage",
 	},
 	{
-		name:      "a bad date that sorts last empties the ledger totals of the entry",
+		name:      "a bad date that sorts last",
 		csv:       csvHead + "2026-03-02,m,5,5\nzzz,m,1,1\n",
 		calls:     []ledgerCall{{day2, "openai", 5, 5}},
 		tolerance: 0.02, result: "mismatch", mismatched: 1,
@@ -247,7 +305,7 @@ var reconcileCases = []reconcileCase{
 			"2026-03-02  ledger in/out 5/5  export in/out 5/5  ok",
 			"zzz  ledger in/out 0/0  export in/out 1/1  MISMATCH",
 		},
-		ledgerIn: 0, ledgerOut: 0, exportIn: 6, exportOut: 6, from: "2026-03-02", to: "zzz",
+		ledgerIn: 5, ledgerOut: 5, exportIn: 6, exportOut: 6, from: "2026-03-02", to: "zzz",
 	},
 	{
 		name:      "a short date is not cut and does not match",

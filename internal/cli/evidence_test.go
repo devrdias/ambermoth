@@ -206,6 +206,8 @@ func TestReconcileCommand(t *testing.T) {
 			wantLine: "ledger in/out 100/20  export in/out 200/20  MISMATCH", wantResult: "mismatch"},
 		{name: "flags a day the ledger has no calls for", csv: header + "2026-03-05,gpt-test,10,10\n",
 			wantLine: "2026-03-05  ledger in/out 0/0  export in/out 10/10  MISMATCH", wantResult: "mismatch"},
+		{name: "flags a ledger day the export skips between its first and last day", csv: header + "2026-03-03,gpt-test,5,5\n2026-03-05,gpt-test,5,5\n",
+			wantLine: "2026-03-04  ledger in/out 100/20  export in/out 0/0  MISMATCH", wantResult: "mismatch"},
 		{name: "accepts a small difference by default", csv: header + "2026-03-04,gpt-test,101,20\n",
 			wantLine: "export in/out 101/20  ok", wantResult: "match"},
 		{name: "rejects the same difference with a tighter tolerance", csv: header + "2026-03-04,gpt-test,101,20\n",

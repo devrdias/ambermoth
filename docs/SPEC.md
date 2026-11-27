@@ -495,6 +495,12 @@ not a command error.
   `date,model,input_tokens,output_tokens` (adapters for each provider's export
   format are tracked as issues). Per-day totals are compared with a tolerance
   (default 2%); the result is appended as a `reconciliation` entry.
+  The period is the export's first to last day, inclusive. Every day in it is
+  compared, including a day with provider calls in the ledger and no row in the
+  export: that day counts as export totals of zero, so it is a mismatch unless
+  its calls carry no tokens. `period_from`/`period_to` are those two days and
+  `ledger_tokens_in/out` sum the provider's calls over the whole period. Calls
+  outside the period are not counted.
 - `ambermoth alerts` — advisory only, phrased as "review this":
   - *volume*: a key/purpose's daily calls > 3× its trailing 14-day median;
   - *concentration*: one endpoint/purpose > 80% of a key's last-7-day calls
