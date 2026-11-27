@@ -170,3 +170,97 @@ func TestVerifyPackWarnsAboutAnotherVerifier(t *testing.T) {
 		t.Fatalf("want a re-render warning, got %v", r.Warnings)
 	}
 }
+
+var notObjectLines = []string{"[1]", `"x"`, "3", "null", "true"}
+
+// A pack comes from someone else: every ledger file in it may hold a line of
+// the wrong shape and must produce an error in the report, never a crash.
+func TestVerifyPackLedgerFilesNotObjects(t *testing.T) {
+	f := newPackFixture(t)
+	files := []struct{ path, wantErr string }{
+		{"ledger/genesis.json", "ledger/genesis.json: unparseable"},
+		{"ledger/segment.jsonl", "not valid JSON object"},
+		{"ledger/context.jsonl", "context.jsonl: unparseable line"},
+	}
+	for _, file := range files {
+		for _, line := range notObjectLines {
+			t.Run(file.path+" holds "+line, func(t *testing.T) {
+				out := f.rewrite(t, func(fs map[string][]byte, _ *pack.Manifest) {
+					fs[file.path] = []byte(line + "\n")
+				})
+				r, err := pack.VerifyPack(out, f.vo)
+				if err != nil {
+					t.Fatalf("VerifyPack: %v", err)
+				}
+				all := strings.Join(append(r.Errors, r.Ledger.Errors...), "\n")
+				if r.OK() || !strings.Contains(all, file.wantErr) {
+					t.Fatalf("want an error containing %q, got OK=%v errors:\n%s", file.wantErr, r.OK(), all)
+				}
+			})
+		}
+	}
+}
+
+func TestVerifyPackLastSegmentLineNotAnObject(t *testing.T) {
+	f := newPackFixture(t)
+	for _, line := range notObjectLines {
+		t.Run(line, func(t *testing.T) {
+			out := f.rewrite(t, func(fs map[string][]byte, _ *pack.Manifest) {
+				fs["ledger/segment.jsonl"] = append(fs["ledger/segment.jsonl"], []byte(line+"\n")...)
+			})
+			r, err := pack.VerifyPack(out, f.vo)
+			if err != nil {
+				t.Fatalf("VerifyPack: %v", err)
+			}
+			if r.OK() || !strings.Contains(strings.Join(append(r.Errors, r.Ledger.Errors...), "\n"), "segment end does not match manifest") {
+				t.Fatalf("want a segment end error, got OK=%v %v %v", r.OK(), r.Errors, r.Ledger.Errors)
+			}
+		})
+	}
+}
+
+// manifest.json fields of the wrong JSON type fail to parse; they must come
+// back as an error from VerifyPack.
+func TestVerifyPackManifestWrongShapes(t *testing.T) {
+	f := newPackFixture(t)
+	manifests := []string{
+		"[1]", `"x"`, "3", "true", "",
+		`{"segment": []}`, `{"files": {}}`, `{"files": [1]}`, `{"format": 1}`, `{"totals": "x"}`, `{"disclosed": "x"}`,
+	}
+	for _, mb := range manifests {
+		t.Run(mb, func(t *testing.T) {
+			files, err := pack.ReadPack(f.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files["manifest.json"] = []byte(mb)
+			names := make([]string, 0, len(files))
+			for n := range files {
+				names = append(names, n)
+			}
+			out := filepath.Join(t.TempDir(), "bad.zip")
+			if err := pack.WriteZip(out, names, files, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			r, err := pack.VerifyPack(out, f.vo)
+			if err == nil && r.OK() {
+				t.Fatal("a manifest of the wrong shape verified")
+			}
+		})
+	}
+}
+
+func TestCheckSampleLedgerFilesWrongShape(t *testing.T) {
+	f := newPackFixture(t)
+	for _, line := range notObjectLines {
+		t.Run(line, func(t *testing.T) {
+			out := f.rewrite(t, func(fs map[string][]byte, _ *pack.Manifest) {
+				fs["ledger/segment.jsonl"] = []byte(line + "\n")
+				fs["disclosures/entry-keys.json"] = []byte(`{"1":"00"}`)
+			})
+			if _, _, err := pack.CheckSample(out, 1, []byte("a"), []byte("b")); err == nil {
+				t.Fatal("want an error")
+			}
+		})
+	}
+}
