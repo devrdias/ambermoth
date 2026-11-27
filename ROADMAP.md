@@ -58,13 +58,16 @@ flowchart LR
 ## M1: Hardening (in progress)
 
 - [x] Go rules applied ([docs/go-rules.md](docs/go-rules.md)): rule checker clean, black-box tests, injected clock and logger
-- [ ] Every function under CRAP 10 (`make crap`; about 30 left) (good first task)
+- [ ] Every function under CRAP 10 (`make crap`; 32 left) (good first task)
 - [x] CI runs `make rules`
-- [ ] CI runs `make crap` once it passes, and `make lint`
+- [ ] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
+- [ ] `make lint` clean (53 findings: 50 errcheck, 3 staticcheck), then CI runs it
+- [ ] CI runs `make crap` once it passes
 - [ ] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
 - [ ] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
 - [ ] Write-ahead durability mode
 - [ ] External security review of the proxy
+- [ ] `make diagrams` regenerates the architecture images from the LikeC4 model (good first task)
 
 ## M2: Ops and integrations (next)
 
