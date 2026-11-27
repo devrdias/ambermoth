@@ -400,27 +400,35 @@ func ReadFile(path string) ([]Entry, [][]byte, error) {
 func Read(r io.Reader) ([]Entry, [][]byte, error) {
 	var entries []Entry
 	var lines [][]byte
-	err := scanLines(r, func(line []byte) {
+	err := EachLine(r, func(line []byte, _ int64) {
 		raw := append([]byte(nil), line...)
 		lines = append(lines, raw)
-		entries = append(entries, parseEntry(raw))
+		entries = append(entries, ParseEntry(raw))
 	})
 	return entries, lines, err
 }
 
-// scanLines calls fn for every non-blank line of r. The line is only valid
-// during the call. A line over MaxLineBytes ends the scan with an error
-// naming it.
-func scanLines(r io.Reader, fn func(line []byte)) error {
+// EachLine calls fn for every non-blank line of r, in order, with the line as
+// Read and Verify see it (no line end) and the byte offset where it starts in
+// r. The line is only valid during the call. A line over MaxLineBytes ends the
+// scan with an error naming it.
+func EachLine(r io.Reader, fn func(line []byte, off int64)) error {
+	var pos, start int64
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1024*1024), MaxLineBytes)
+	sc.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		adv, tok, err := bufio.ScanLines(data, atEOF)
+		start = pos
+		pos += int64(adv)
+		return adv, tok, err
+	})
 	n := 0
 	for sc.Scan() {
 		n++
 		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
 			continue
 		}
-		fn(sc.Bytes())
+		fn(sc.Bytes(), start)
 	}
 	if errors.Is(sc.Err(), bufio.ErrTooLong) {
 		return fmt.Errorf("line %d is longer than %d MiB", n+1, MaxLineBytes>>20)
@@ -428,8 +436,8 @@ func scanLines(r io.Reader, fn func(line []byte)) error {
 	return sc.Err()
 }
 
-// parseEntry parses one ledger line; it is nil when the line is not a JSON object.
-func parseEntry(line []byte) Entry {
+// ParseEntry parses one ledger line; it is nil when the line is not a JSON object.
+func ParseEntry(line []byte) Entry {
 	v, err := canon.Parse(line)
 	m, ok := v.(map[string]any)
 	if err != nil || !ok {
