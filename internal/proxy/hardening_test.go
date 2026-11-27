@@ -161,3 +161,86 @@ func TestAutoEnrollRetriedAfterDrop(t *testing.T) {
 		t.Fatalf("want exactly 1 auto_enroll entry, got %d", n)
 	}
 }
+
+// holdConn is an upstream connection whose Write has delivered its bytes but
+// has not returned yet, the state a real conn is in when the peer answers
+// before the writer goroutine is scheduled again.
+type holdConn struct {
+	entered  chan struct{} // closed once Write has taken the bytes
+	release  chan struct{} // closed by Close; lets Write return
+	returned chan struct{} // closed just before Write returns
+	once     sync.Once
+}
+
+func (h *holdConn) Read([]byte) (int, error) {
+	<-h.release
+	return 0, io.EOF
+}
+
+func (h *holdConn) Write(b []byte) (int, error) {
+	close(h.entered)
+	<-h.release
+	close(h.returned)
+	time.Sleep(20 * time.Millisecond) // the writer goroutine is descheduled here
+	return len(b), nil
+}
+
+// Close frees Write and waits until it is on its way out, so Close always
+// finishes while Write is still short of returning.
+func (h *holdConn) Close() error {
+	h.once.Do(func() { close(h.release) })
+	<-h.returned
+	return nil
+}
+
+type upgradeTransport struct{ body io.ReadCloser }
+
+func (u upgradeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	h := http.Header{}
+	h.Set("Connection", "Upgrade")
+	h.Set("Upgrade", "websocket")
+	return &http.Response{StatusCode: http.StatusSwitchingProtocols, Status: "101 Switching Protocols",
+		Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1, Header: h, Body: u.body, Request: r}, nil
+}
+
+// A session closed while a client write is still returning from the upstream
+// conn records that write.
+func TestWebSocketCloseCountsWriteInFlight(t *testing.T) {
+	hc := &holdConn{entered: make(chan struct{}), release: make(chan struct{}), returned: make(chan struct{})}
+	s, _ := ledger.Init(t.TempDir(), "test", time.Now)
+	w := proxy.NewWriter(s, 100, discard)
+	w.FlushEvery = 5 * time.Millisecond
+	go func() { _ = w.Run(context.Background()) }()
+	cfg := proxy.DefaultConfig()
+	cfg.Upstreams = map[string]proxy.Upstream{"openai": {BaseURL: "http://upstream.invalid", Style: "openai"}}
+	p, _ := proxy.New(cfg, s, w, upgradeTransport{body: hc}, discard)
+	srv := httptest.NewServer(p)
+	defer srv.Close()
+
+	conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	io.WriteString(conn, "GET /openai/v1/realtime HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+	br := bufio.NewReader(conn)
+	if resp, err := http.ReadResponse(br, nil); err != nil || resp.StatusCode != 101 {
+		t.Fatalf("no upgrade: %v %v", resp, err)
+	}
+	io.WriteString(conn, "hello")
+	select {
+	case <-hc.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream never saw the write")
+	}
+	p.CloseUpgrades()
+	w.Close()
+
+	cs := calls(t, s)
+	if len(cs) != 1 {
+		t.Fatalf("want 1 call entry, got %d", len(cs))
+	}
+	if got := cs[0].Int("bytes_in"); got != 5 {
+		t.Errorf("bytes_in = %d, want 5", got)
+	}
+}
