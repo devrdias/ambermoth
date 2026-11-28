@@ -43,6 +43,7 @@ Setup and capture
 Integrity
   anchor                     RFC 3161-timestamp the chain head
   verify                     verify the ledger's chain and anchors
+  repair                     cut a torn last line after a crash, recorded as a gap (--dry-run)
 
 Evidence
   pack                       build an evidence pack (zip)
@@ -92,7 +93,7 @@ func New(env Env) *App {
 		"init": a.cmdInit, "proxy": a.cmdProxy, "key": a.cmdKey, "link": a.cmdLink,
 		"amend": a.cmdAmend, "anchor": a.cmdAnchor, "verify": a.cmdVerify, "pack": a.cmdPack,
 		"verify-pack": a.cmdVerifyPack, "check-sample": a.cmdCheckSample, "reconcile": a.cmdReconcile,
-		"alerts": a.cmdAlerts, "report": a.cmdReport, "agent-prompt": a.cmdAgentPrompt,
+		"alerts": a.cmdAlerts, "report": a.cmdReport, "agent-prompt": a.cmdAgentPrompt, "repair": a.cmdRepair,
 	}
 	return a
 }

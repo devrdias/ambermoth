@@ -33,7 +33,7 @@ App ──► ambermoth proxy ──► Provider API (OpenAI / Anthropic / OpenA
               ├─ ledger writer  (append-only JSONL, hash chain, fsync)
               └─ anchor worker  (RFC 3161 TSA, hash only)   [optional, interval]
 
-ambermoth CLI:  init · proxy · key · amend · link · anchor · verify
+ambermoth CLI:  init · proxy · key · amend · link · anchor · verify · repair
                  pack · verify-pack · reconcile · alerts · report
 ```
 
@@ -49,6 +49,8 @@ and builds offline from the repository.
   secret.key         32-byte HMAC master key, hex, mode 0600 — customer-held, never leaves
   ledger.jsonl       the ledger: one canonical JSON entry per line, append-only
   ledger.lock        advisory lock file (flock) for writers
+  ledger.jsonl.torn-<seq>-<unix time>
+                     a torn last line removed by `ambermoth repair`, mode 0600 (§6.4)
   anchors/           RFC 3161 tokens: <seq>-<n>.tsr (DER TimeStampResp)
 ```
 
@@ -209,6 +211,12 @@ Written by `ambermoth link` — typically from CI on every eval-harness change.
 Written when the proxy failed to record calls (fail-open, §6.4):
 `dropped` (count), `since`, `until`, `cause`. Gaps are shown in every pack.
 
+`cause` is free text. The causes in use are `entry could not be encoded`, `ledger
+write error: <error>` and, from `ambermoth repair` (§6.4), `torn final line removed
+by repair: <n> bytes, sha256:<hex>, after seq <k>, saved as <file>`. No field was
+added for repair: it writes the existing ones, with `dropped` 1, `since` the `ts`
+of the last intact entry and `until` the time of the repair.
+
 ### 4.8 `reconciliation`
 
 Result of comparing the ledger with a provider usage export:
@@ -292,8 +300,42 @@ true. The call is recorded either way.
 - Durability: entries are written by a single writer goroutine, batched, and
   `fsync`ed at least every 200 ms. This is best-effort durability (an entry
   may be lost if the host crashes within that window); a crash leaves at most a
-  truncated final line, which `verify` reports and `ambermoth repair` (future)
-  truncates with a `gap` entry. Write-ahead mode is future work.
+  truncated final line, which `verify` reports and `ambermoth repair` removes
+  with a `gap` entry. Write-ahead mode is future work.
+- Repair (`ambermoth repair [--dry-run] [--json]`). It touches only the bytes
+  after the last newline, and never edits or removes a complete entry.
+  - Checks. The ledger up to the last newline must verify (§8 steps 1 to 3);
+    any chain error refuses the repair and points at `ambermoth verify`.
+    Anchor problems do not refuse it; they are reported. An empty file, a ledger
+    whose only line is torn (the genesis entry), and a last line that is a whole
+    JSON object but fails verification (altered, not torn), with or without a
+    newline, are refused and left as they are.
+  - A torn last line (the bytes after the last newline are not a whole JSON
+    object) is first written to `ledger.jsonl.torn-<seq>-<unix time>` next to the
+    ledger, mode 0600, created exclusively and fsynced, where `<seq>` is the last
+    intact seq plus one. A name that exists is never overwritten; `.1`, `.2` are
+    tried. The ledger is then truncated at the start of the line and fsynced, and
+    one `gap` entry is appended through the normal append path. Its `cause` gives
+    the size and SHA-256 of the removed bytes, the last intact seq and the file
+    name, and never the bytes: a torn line may hold part of a record.
+    `dropped` is 1, a floor, because entries of the same batch that were never
+    written cannot be counted.
+  - A last line that is a whole entry and only lacks its newline is kept. If the
+    ledger with that newline verifies, the newline is appended; no entry is
+    removed and no gap entry is written. `verify` passes such a ledger as it is,
+    since a line is a line with or without its end; `ambermoth proxy` and every
+    command that opens the ledger refuse it, and repair is what fixes that.
+  - Interruption. The three steps (save, truncate, append the gap) can be
+    interrupted at any point and `repair` run again. A saved line that no gap
+    entry names (a `cause` ending in `saved as <file>`) is recorded on the next
+    run, and a torn line already saved is not saved twice. A run that finds
+    nothing to do changes nothing.
+  - Locking. Repair takes `ledger.lock` without waiting, for as long as it changes
+    the file, and refuses if a writer holds it. The proxy holds that lock only while it
+    appends, not while it runs, so repair cannot tell an idle proxy from none:
+    stop the proxy first. `--dry-run` takes no lock and writes nothing.
+  - Exit status is 0 when the ledger was repaired or needed nothing, 1 when
+    repair was refused or failed.
 - Overhead target: < 20 ms p50 on non-streaming calls (HMAC is computed
   incrementally while bytes stream; no extra round trips).
 - Shutdown: on SIGINT/SIGTERM the proxy stops accepting connections, waits up
