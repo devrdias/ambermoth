@@ -21,7 +21,7 @@ func TestStreamIsNotBuffered(t *testing.T) {
 	unblock := func() { once.Do(func() { close(release) }) }
 	up := httptest.NewServer(streamUpstream(func() { <-release }))
 	t.Cleanup(up.Close)
-	rg := newBenchRig(t, up.URL)
+	rg := newBenchRig(t, up.URL, false)
 	t.Cleanup(unblock) // runs first, so the upstream handler can finish
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -58,7 +58,7 @@ func TestOverheadStaysUnderTarget(t *testing.T) {
 	const calls, target = 200, 20 * time.Millisecond
 	up := httptest.NewServer(chatUpstream())
 	t.Cleanup(up.Close)
-	rg := newBenchRig(t, up.URL)
+	rg := newBenchRig(t, up.URL, false)
 	c, body := benchClient(t), requestBody(1<<10, false)
 	direct := medianLatency(t, c, up.URL+benchPath, body, calls)
 	proxied := medianLatency(t, c, rg.url+"/openai"+benchPath, body, calls)

@@ -107,6 +107,9 @@ func (a *App) serveProxy(ctx context.Context, s *ledger.Store, cfg proxy.Config,
 		_ = ln.Close()
 		return err
 	}
+	if n := p.OpenIntents(); n > 0 {
+		a.env.Logger.InfoContext(ctx, "open intents in the ledger: calls the proxy began that have no call entry", "count", n)
+	}
 	// The writer must outlive the server so late calls are still recorded, so
 	// it stops only through w.Close, not through ctx.
 	loopCtx, stopLoops := context.WithCancel(ctx)
@@ -162,6 +165,9 @@ func (a *App) printListening(addr string, cfg proxy.Config) {
 		names = append(names, "/"+n)
 	}
 	_, _ = fmt.Fprintf(a.env.Stderr, "ambermoth proxy listening on http://%s (upstreams: %s)\n", addr, strings.Join(names, " "))
+	if cfg.WriteAhead {
+		_, _ = fmt.Fprintln(a.env.Stderr, "ambermoth: write-ahead is on: a call is refused with 503 if its intent cannot be written")
+	}
 }
 
 // anchorLoop anchors the chain head every interval until ctx is cancelled.

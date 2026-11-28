@@ -30,6 +30,7 @@ const (
 	TypeAnchor         = "anchor"
 	TypeGap            = "gap"
 	TypeReconciliation = "reconciliation"
+	TypeIntent         = "intent"
 )
 
 // Entry is a ledger entry. It is a generic map so that unknown fields from
@@ -117,7 +118,12 @@ type Clock func() time.Time
 func FormatTime(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
 // NewSaltID returns a fresh 16-byte random salt id (hex).
-func NewSaltID() string {
+func NewSaltID() string { return randomHex16() }
+
+// NewCallID returns a fresh 128-bit random call id (hex), for an intent (SPEC §4.9).
+func NewCallID() string { return randomHex16() }
+
+func randomHex16() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)

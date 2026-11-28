@@ -31,27 +31,38 @@ const (
 
 var benchSizes = []int{1 << 10, 16 << 10, 256 << 10}
 
-func BenchmarkDirect(b *testing.B)  { benchAll(b, false, false) }
-func BenchmarkProxied(b *testing.B) { benchAll(b, true, false) }
+func BenchmarkDirect(b *testing.B)  { benchAll(b, scenario{}) }
+func BenchmarkProxied(b *testing.B) { benchAll(b, scenario{proxied: true}) }
 
 // The stream benchmarks report the time to the first byte (ttfb-*) next to the total.
-func BenchmarkStreamDirect(b *testing.B)  { benchAll(b, false, true) }
-func BenchmarkStreamProxied(b *testing.B) { benchAll(b, true, true) }
+func BenchmarkStreamDirect(b *testing.B)  { benchAll(b, scenario{stream: true}) }
+func BenchmarkStreamProxied(b *testing.B) { benchAll(b, scenario{proxied: true, stream: true}) }
 
-// scenario is one benchmark: a body size, with or without the proxy, streaming or not.
-type scenario struct {
-	size            int
-	proxied, stream bool
+// The write-ahead benchmarks are the proxied ones with write_ahead on: one fsync
+// in the request path, so the figure is the disk's. Compare with Proxied.
+func BenchmarkProxiedWriteAhead(b *testing.B) {
+	benchAll(b, scenario{proxied: true, writeAhead: true})
+}
+func BenchmarkStreamProxiedWriteAhead(b *testing.B) {
+	benchAll(b, scenario{proxied: true, stream: true, writeAhead: true})
 }
 
-func benchAll(b *testing.B, proxied, stream bool) {
+// scenario is one benchmark: a body size, with or without the proxy, streaming
+// or not, and with write_ahead on or off. benchAll sets the size.
+type scenario struct {
+	size                        int
+	proxied, stream, writeAhead bool
+}
+
+func benchAll(b *testing.B, base scenario) {
 	sizes, modes := benchSizes, []bool{false, true}
-	if stream {
+	if base.stream {
 		sizes, modes = sizes[:1], modes[:1]
 	}
 	for _, size := range sizes {
 		for _, parallel := range modes {
-			sc := scenario{size: size, proxied: proxied, stream: stream}
+			sc := base
+			sc.size = size
 			b.Run(fmt.Sprintf("%dKB/%s", size>>10, modeName(parallel)), func(b *testing.B) { benchRun(b, sc, parallel) })
 		}
 	}
@@ -69,7 +80,7 @@ func benchRun(b *testing.B, sc scenario, parallel bool) {
 	b.Cleanup(up.Close)
 	url, rg := up.URL+benchPath, (*benchRig)(nil)
 	if sc.proxied {
-		rg = newBenchRig(b, up.URL)
+		rg = newBenchRig(b, up.URL, sc.writeAhead)
 		url = rg.url + "/openai" + benchPath
 	}
 	c, body := benchClient(b), requestBody(sc.size, sc.stream)
@@ -145,6 +156,9 @@ func timedCall(c *http.Client, url string, body []byte) (timing, error) {
 		return timing{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return timing{}, fmt.Errorf("status %d", resp.StatusCode)
+	}
 	var one [1]byte
 	if _, err := io.ReadFull(resp.Body, one[:]); err != nil {
 		return timing{}, err
@@ -199,7 +213,7 @@ type benchRig struct {
 	w     *proxy.Writer
 }
 
-func newBenchRig(tb testing.TB, upstream string) *benchRig {
+func newBenchRig(tb testing.TB, upstream string, writeAhead bool) *benchRig {
 	tb.Helper()
 	s, err := ledger.Init(tb.TempDir(), "bench", time.Now)
 	if err != nil {
@@ -212,6 +226,7 @@ func newBenchRig(tb testing.TB, upstream string) *benchRig {
 		_ = w.Run(context.Background())
 	}()
 	cfg := proxy.DefaultConfig()
+	cfg.WriteAhead = writeAhead
 	cfg.Upstreams = map[string]proxy.Upstream{"openai": {BaseURL: upstream, Style: "openai"}}
 	p, err := proxy.New(cfg, s, w, nil, discard)
 	if err != nil {

@@ -36,6 +36,7 @@ type Config struct {
 	KeyDefaults    map[string]string   `json:"key_defaults"` // key fingerprint -> purpose
 	Routes         []RouteRule         `json:"routes"`
 	AutoEnroll     bool                `json:"auto_enroll"`
+	WriteAhead     bool                `json:"write_ahead"`     // fsync an intent entry before forwarding; refuse the call if that fails (SPEC §6.4)
 	AnchorInterval string              `json:"anchor_interval"` // e.g. "1h"; empty = off
 	TSAs           []string            `json:"tsas"`
 }

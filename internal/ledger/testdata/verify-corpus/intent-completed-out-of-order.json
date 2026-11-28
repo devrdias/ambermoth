@@ -1,0 +1,39 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 7,
+  "entries": 13,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:fd1f792ef66ed7faf9e64c6859e5592571dac97e61281cb20d9f9e6b78c4b1d2",
+  "last_anchored_seq": -1,
+  "last_seq": 12,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "orphan_intents": 1,
+  "orphans": [
+    {
+      "endpoint": "chat.completions",
+      "seq": 9,
+      "ts": "2026-03-01T00:09:00.000Z"
+    }
+  ],
+  "starts_at_genesis": true,
+  "unanchored_tail": 13,
+  "warnings": []
+}

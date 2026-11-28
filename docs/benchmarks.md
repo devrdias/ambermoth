@@ -4,7 +4,7 @@ Two targets from the roadmap: proxy overhead under 20 ms at p50 on non-streaming
 under 5 minutes for a ledger of 1M entries. The benchmarks are not part of `make check` or CI.
 
 ```
-make bench       # proxy (count 5), then pack at 10k and 100k entries
+make bench       # proxy (count 5, write-ahead on and off), then pack at 10k and 100k entries
 make bench-1m    # pack at 1M entries
 ```
 
@@ -91,6 +91,42 @@ bodies, against 20 ms. Evidence: the table, and `TestOverheadStaysUnderTarget`. 
 size. A CPU profile of the 256 KB case puts about 70% in `encoding/json` scanning the request body and 6% in
 SHA-256. The proxy does not buffer streams: the first byte arrives 0.29 ms after it would direct, and the test
 above checks it.
+
+## Results: proxy with write-ahead on
+
+`BenchmarkProxiedWriteAhead` and `BenchmarkStreamProxiedWriteAhead` are the proxied benchmarks with `write_ahead`
+on ([ADR-0004](adr/0004-write-ahead-mode.md)): each call waits for its intent to be fsynced before it is forwarded.
+They ran in the same `make bench` run as the figures below for the mode off, on 2026-11-28 with the code of this
+change (the table above is from 2026-11-27, and the two agree within noise). A call that did not return 200 counts
+as `failed`, and none did. Median of 5 runs, times in ms.
+
+The ledger directory was a `t.TempDir()` under `/tmp`, which is ext4 on the virtio block device of the machine
+above. It is not tmpfs, so the fsync is a real one, but it is a cloud volume and a different disk will give
+different numbers. A bare append of 300 bytes followed by an fsync took 0.36 ms at p50, 0.73 ms at p95 and
+1.37 ms at p99 on it. The mode costs the disk's fsync, and this is what that was here.
+
+| Body | Mode | Off p50 / p95 / p99 | On p50 / p95 / p99 |
+|---|---|---|---|
+| 1 KB | sequential | 0.144 / 0.639 / 1.34 | 1.04 / 1.72 / 2.83 |
+| 1 KB | parallel | 0.173 / 1.10 / 2.17 | 1.30 / 2.40 / 3.94 |
+| 16 KB | sequential | 0.347 / 1.02 / 1.78 | 1.17 / 1.81 / 3.13 |
+| 16 KB | parallel | 0.315 / 1.38 / 2.51 | 1.19 / 2.30 / 3.34 |
+| 256 KB | sequential | 3.25 / 4.75 / 5.65 | 4.20 / 6.13 / 7.82 |
+| 256 KB | parallel | 3.73 / 6.09 / 8.10 | 5.65 / 9.50 / 11.5 |
+
+Streaming, 1 KB request, 52 events, sequential:
+
+| | Off p50 / p95 / p99 | On p50 / p95 / p99 |
+|---|---|---|
+| First byte | 0.443 / 1.15 / 1.92 | 1.35 / 2.10 / 2.89 |
+| Total | 0.501 / 1.26 / 2.02 | 1.51 / 2.31 / 3.09 |
+
+With the mode on, a call costs about 0.9 ms more at p50 here. The bare fsync was 0.36 ms; the rest is the write and
+the trip through the writer goroutine, which was not profiled. It is added once per call and does not grow with the
+body size.
+The parallel runs use 2 goroutines on 2 cores, so they show little of group commit; the cost per call stays close
+to the sequential one. The target of 20 ms p50 is for the default mode. With write-ahead on the figure is
+published and not gated.
 
 ## Results: pack
 

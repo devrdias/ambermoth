@@ -1,0 +1,26 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 0,
+  "entries": 4,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 9,
+  "gaps": [],
+  "head_hash": "sha256:21e846fd2f82263780418e54480c332c843f26fc29065940b67d3843b8255bbe",
+  "last_anchored_seq": -1,
+  "last_seq": 12,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "orphan_intents": 1,
+  "orphans": [
+    {
+      "endpoint": "chat.completions",
+      "seq": 12,
+      "ts": "2026-03-01T00:12:00.000Z"
+    }
+  ],
+  "starts_at_genesis": false,
+  "unanchored_tail": 4,
+  "warnings": []
+}

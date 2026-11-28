@@ -1,6 +1,6 @@
 # ADR-0004: Write-ahead mode: record an intent before the call is sent
 
-Status: Proposed · 2026-11-28 · Needs sign-off before the code
+Status: Accepted · 2026-11-28 · signed off by Rafa
 
 ## Context
 Today a call is recorded after the response ends, in a batch that is fsynced at

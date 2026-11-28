@@ -1,0 +1,51 @@
+{
+  "anchor_checks_skipped": false,
+  "anchors": [],
+  "dropped_calls": 8,
+  "entries": 12,
+  "entries_lagging_over_24h": 0,
+  "errors": [],
+  "first_seq": 0,
+  "gaps": [
+    {
+      "cause": "disk full",
+      "dropped": 7,
+      "entry_hash": "sha256:f925ad4318712fb535591b76f4752f248fb3bfef611ec66d0bd8ab2d0355c98c",
+      "prev_hash": "sha256:04fe76ef4b9a754638c867e41e097b153a61a5141c2df2ca58732adda4d0b31c",
+      "seq": 6,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:06:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    },
+    {
+      "cause": "disk full",
+      "dropped": 1,
+      "entry_hash": "sha256:e5282070fd7e3543f63966c29aa3e408e161755a153b952fb968724bffa77085",
+      "prev_hash": "sha256:1e99e54abf5eb14db8aaefca27688183ff97667f7f4bb90d4f7394ce977eed7a",
+      "seq": 9,
+      "since": "2026-03-01T00:00:00.000Z",
+      "ts": "2026-03-01T00:09:00.000Z",
+      "type": "gap",
+      "until": "2026-03-01T00:01:00.000Z",
+      "v": 1
+    }
+  ],
+  "head_hash": "sha256:1a24364aa56bbeb6a7a718e1ad6b4e0c71a0bbdf5f23d39aaade949d19814c90",
+  "last_anchored_seq": -1,
+  "last_seq": 11,
+  "max_anchor_lag_seconds": -1,
+  "max_anchor_lag_seq": -1,
+  "orphan_intents": 1,
+  "orphans": [
+    {
+      "endpoint": "chat.completions",
+      "seq": 8,
+      "ts": "2026-03-01T00:08:00.000Z"
+    }
+  ],
+  "starts_at_genesis": true,
+  "unanchored_tail": 12,
+  "warnings": []
+}

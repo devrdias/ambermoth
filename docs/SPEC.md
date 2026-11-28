@@ -161,6 +161,7 @@ Common fields on every entry:
 | `salt_id`, `prompt_hmac`, `output_hmac` | §3.3 |
 | `bytes_in`, `bytes_out` | Body sizes |
 | `client_aborted` | bool — client disconnected before the response finished |
+| `call_id`, `intent_seq` | Only when `write_ahead` is on (§6.4): the `call_id` of the `intent` (§4.9) this call completes, and that intent's `seq` |
 
 Text taken from request headers or the path is written as valid UTF-8: each
 invalid byte sequence becomes U+FFFD. A value over its limit is cut on a
@@ -225,6 +226,35 @@ file), `ledger_tokens_in/out`, `export_tokens_in/out`, `days_mismatched`,
 `result` ∈ `match | mismatch`, `tolerance_pct` (the tolerance in whole percent,
 see §10).
 
+### 4.9 `intent` — a request the proxy is about to send
+
+Written, and fsynced, before the proxy forwards the request, when `write_ahead` is on (§6.4). The `call` entry
+that follows when the call ends completes it by carrying the same `call_id` and the intent's `seq` as
+`intent_seq`.
+
+| Field | Notes |
+|---|---|
+| `call_id` | 128 random bits, hex (32 characters). Unique per call |
+| `provider`, `api_style`, `endpoint`, `method`, `path` | As in `call`. For a request with an `Upgrade: websocket` header the `endpoint` is `realtime`, as the call will say |
+| `key_fp` | As in `call` |
+| `purpose` | The tag at the time, after route and key defaults |
+| `salt_id` | The value the `call` will carry |
+| `declared_bytes_in` | The `Content-Length` of the request. Left out when the request has none |
+
+`ts` is the start of the request, as on a `call`. The intent holds nothing taken from the body: the body is hashed
+while it streams to the provider, so `prompt_hmac` and `bytes_in` exist only on the `call`. The intent shows that a
+request to this endpoint with this key was started at this time, not what it held. It has no status, tokens or
+output.
+
+An intent with no `call` that names it is an orphan. It does not say whether the request was sent: the proxy may
+have died between the fsync and the forward, or during a long stream, or the entry of the call may have been
+dropped (§6.4). Nothing closes an orphan, not a restart and not a `gap`. A running proxy also has intents open for
+the calls in flight. `verify` lists orphans (§8 step 8).
+
+Both entries are chained and hashed like any other (§3.2), and the writer assigns `seq` in append order, so an
+intent always comes before its call. The ledger stays `ambermoth-ledger/1` and `v` stays 1: a tool that does not
+know `intent` skips it, and the totals it computes from `call` entries are unchanged.
+
 ## 5. Purpose tags
 
 Taxonomy v1: `production-inference`, `eval-regression`, `eval-benchmark`,
@@ -284,7 +314,7 @@ appends `usage count out of range, ignored` to the call's `note` (after the
 caller's own note and a space, within the 512 bytes). `usage_reported` is still
 true. The call is recorded either way.
 
-### 6.4 Failure modes (fail open)
+### 6.4 Failure modes (fail open, except write-ahead)
 
 - Ledger write failure or a full write queue MUST NOT block or fail the app's
   request. The writer counts dropped entries and, on the next successful write,
@@ -301,8 +331,30 @@ true. The call is recorded either way.
   `fsync`ed at least every 200 ms. This is best-effort durability (an entry
   may be lost if the host crashes within that window); a crash leaves at most a
   truncated final line, which `verify` reports and `ambermoth repair` removes
-  with a `gap` entry. Write-ahead mode is proposed in
-  [ADR-0004](adr/0004-write-ahead-mode.md) and not implemented.
+  with a `gap` entry. Write-ahead mode, below, closes the part of this that the proxy can.
+- Write-ahead mode (`"write_ahead": true` in `config.json`, default `false`;
+  [ADR-0004](adr/0004-write-ahead-mode.md)). Before the proxy forwards a request it writes an `intent` entry
+  (§4.9) and waits until it is fsynced. When the call ends it writes the `call` entry as above, which completes
+  the intent. This covers every request the proxy forwarded: it has an `intent` on disk, or it was refused.
+  - A request is refused, not forwarded and not recorded, when the intent cannot be written: a write error, a full
+    write queue, or no answer within 5 s. The proxy answers `503` with the body
+    `{"error":"ambermoth: write-ahead failed, call not sent"}`. A refused call is not counted as dropped, since
+    nothing was sent, and it does not mark its key as enrolled. This is the one place where the proxy fails closed,
+    on purpose: a mode that sent the call anyway would give the same guarantee as no mode. A full or failing
+    ledger disk stops AI traffic through the proxy; a user who cannot accept that leaves the flag off. There is no
+    second switch.
+  - The intent is not delayed to batch with others. The writer flushes as soon as its batch holds an intent, with
+    whatever else is already queued, in one fsync. Concurrent intents share it. The forward is delayed by the fsync
+    in progress and its own, no more.
+  - A WebSocket upgrade (§6.5) gets its intent before the upgrade is forwarded.
+  - A completion that cannot be written is still fail-open: the call has happened. Its intent stays as an orphan
+    and the `gap` entry is written as above.
+  - What it does not give: an orphan does not say whether the request was sent, and the intent has no result. What
+    the provider did with the request is outside the ledger (§10). It covers traffic through the proxy, and trusts
+    the disk to honour fsync.
+  - The cost is one fsync in the request path, the disk's price (`docs/benchmarks.md`). The overhead target in
+    this list is for the default mode.
+  - The proxy logs, when it starts, how many intents of the ledger have no call.
 - Repair (`ambermoth repair [--dry-run] [--json]`). It touches only the bytes
   after the last newline, and never edits or removes a complete entry.
   - Checks. The ledger up to the last newline must verify (§8 steps 1 to 3);
@@ -372,6 +424,7 @@ file keeps loading.
 | `upstreams.<name>.base_url` | absolute `http` or `https` URL with a host, no query or fragment; trailing `/` is dropped |
 | `tsas[]` | same rule as `base_url` |
 | `anchor_interval` | empty (anchoring off) or a Go duration greater than zero, e.g. `1h`, `90s` |
+| `write_ahead` | `true` or `false`, default `false` (§6.4) |
 | `default_purpose`, `routes[].purpose`, `key_defaults` values | purpose rule of §5 |
 
 The `--listen` flag of `ambermoth proxy` replaces `listen`; the address is
@@ -448,8 +501,21 @@ A verifier MUST check, in order, and report every failure (not stop at the first
    largest lag (and its seq) and the number of entries with a lag over 24 h,
    and warns when that number is not zero.
 7. Gaps. List all `gap` entries.
+8. Intents. Keep the `intent` entries (§4.9) that no `call` has completed yet, by `call_id`. A `call` that has
+   a `call_id` or an `intent_seq` closes one. It is an error when:
+   - the call lacks one of the two;
+   - `intent_seq` is not before the call;
+   - `intent_seq` is not the `seq` of an open intent with the call's `call_id`. That covers a call that names an
+     entry that is not an intent, an intent with another `call_id`, and an intent that was completed already;
+   - an `intent` has no `call_id`, or repeats the `call_id` of one still open.
 
-Exit status 0 only if steps 1, 2, 3 and 5 pass.
+   A call whose `intent_seq` lies before the first entry of the verified range is not an error: the intent cannot
+   be seen from a segment, so a second completion of it cannot be seen either. What is still open at the end are
+   the orphans. They are reported as information, as a count and a list of `seq`, `ts` and `endpoint`. They are not
+   a warning and do not change the exit status. A proxy that is running has intents in flight, so the text report
+   says so. A verifier keeps the open intents only, not the closed ones.
+
+Exit status 0 only if steps 1, 2, 3 and 5 pass and step 8 finds no error. Orphans do not change it.
 
 ## 9. Evidence pack (`ambermoth-pack/1`)
 
@@ -584,6 +650,7 @@ not a command error.
 | Rewrite the whole chain and backdate it | RFC 3161 anchors from pinned TSAs; anchor lag reported | entries after the last anchor are only self-attested; a large lag weakens the timing claim |
 | Anchor with a TSA they control | pinned roots; unpinned tokens fail by default | `--allow-unpinned-tsa` is the verifier's explicit choice |
 | Show different chains to different reviewers | Phase 2 public anchoring | open in v0.1 |
+| Send a call that leaves no record (crash, full queue, failed write) | write-ahead mode: an `intent` is fsynced before the forward, or the call is refused (§6.4) | off by default; an orphan intent does not say whether the call was sent; only traffic through the proxy |
 | Hide traffic on an unlogged key | billing reconciliation, auto-enroll | other accounts/orgs are out of reach |
 | Lie in a purpose tag | code links, volume consistency, amendment trail | a tag is a declaration, not proof |
 | Brute-force short prompts from hashes | per-entry HMAC keys, master key never disclosed | — |
@@ -593,5 +660,5 @@ not a command error.
 ## 12. Out of scope for v0.1
 
 SDK wrappers (Bedrock/Azure), Gemini-native API (use its OpenAI-compatible
-endpoint), content escrow, public transparency anchoring, dashboards, SSO,
-write-ahead durability.
+endpoint), content escrow, public transparency anchoring, dashboards, SSO.
+Write-ahead mode (§6.4) is opt-in and covers traffic through the proxy only.

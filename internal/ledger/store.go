@@ -36,6 +36,7 @@ type Store struct {
 	LedgerID  string
 
 	clock Clock
+	sync  func(*os.File) error // fsync of the ledger file; nil means (*os.File).Sync
 
 	mu       sync.Mutex
 	lastSeq  int64
@@ -373,11 +374,18 @@ func (s *Store) writeSync(data []byte) error {
 		_ = f.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil {
+	if err := s.syncFile(f); err != nil {
 		_ = f.Close()
 		return err
 	}
 	return f.Close()
+}
+
+func (s *Store) syncFile(f *os.File) error {
+	if s.sync != nil {
+		return s.sync(f)
+	}
+	return f.Sync()
 }
 
 // MaxLineBytes is the longest ledger line Read accepts. Entries are far

@@ -104,8 +104,28 @@ func printLedgerReport(w io.Writer, r *ledger.Report) {
 	if r.DroppedCalls > 0 {
 		_, _ = fmt.Fprintf(w, "  gaps:      %d gap entries, %d calls not recorded (fail-open)\n", len(r.Gaps), r.DroppedCalls)
 	}
+	printOrphans(w, r)
 	printLines(w, "  ERROR:", r.Errors)
 	printLines(w, "  warning:", r.Warnings)
+}
+
+// maxOrphansShown is how many orphan intents the text report lists; --json has all of them.
+const maxOrphansShown = 20
+
+// printOrphans lists the intents that no call completes. They are information:
+// a running proxy has calls in flight, and one that died has left an intent behind.
+func printOrphans(w io.Writer, r *ledger.Report) {
+	if r.OrphanIntents == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "  intents:   %d without a call entry (information, not an error; a running proxy has calls in flight)\n", r.OrphanIntents)
+	for i, o := range r.Orphans {
+		if i == maxOrphansShown {
+			_, _ = fmt.Fprintf(w, "    … and %d more (all of them are in the --json output)\n", len(r.Orphans)-i)
+			return
+		}
+		_, _ = fmt.Fprintf(w, "    seq %-6d %s  %s\n", o.Seq, o.TS, o.Endpoint)
+	}
 }
 
 func printAnchors(w io.Writer, r *ledger.Report) {

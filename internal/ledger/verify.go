@@ -72,6 +72,11 @@ type Report struct {
 	EntriesLaggingOver24h int   `json:"entries_lagging_over_24h"`
 	DroppedCalls          int64 `json:"dropped_calls"`
 	AnchorChecksSkip      bool  `json:"anchor_checks_skipped"`
+	// OrphanIntents counts the intent entries (SPEC §4.9) that no call in the
+	// verified range completes, and Orphans lists them. They are information, not
+	// errors: the proxy may have been running, or may have died before sending.
+	OrphanIntents int            `json:"orphan_intents,omitempty"`
+	Orphans       []OrphanIntent `json:"orphans,omitempty"`
 }
 
 // OK reports whether verification passed.
@@ -133,6 +138,7 @@ type verifier struct {
 	prevHash string
 	prevSeq  int64 // -1 after an unreadable line
 	prevTime time.Time
+	intents  openIntents
 }
 
 func newVerifier(opt VerifyOptions) *verifier {
@@ -141,7 +147,7 @@ func newVerifier(opt VerifyOptions) *verifier {
 	}
 	r := &Report{LastAnchoredSeq: -1, Errors: []string{}, Warnings: []string{}, Anchors: []AnchorResult{},
 		MaxAnchorLagSeconds: -1, MaxAnchorLagSeq: -1}
-	return &verifier{opt: opt, r: r, bySeq: map[int64]int{}, prevSeq: -1}
+	return &verifier{opt: opt, r: r, bySeq: map[int64]int{}, prevSeq: -1, intents: openIntents{}}
 }
 
 // add checks the next entry; e is nil for a line that is not a JSON object.
@@ -167,6 +173,8 @@ func (v *verifier) finish() *Report {
 	}
 	r.computeAnchorLag(v.recs)
 	r.UnanchoredTail = unanchoredTail(v.recs, r.LastAnchoredSeq)
+	r.Orphans = v.intents.orphans()
+	r.OrphanIntents = len(r.Orphans)
 	return r
 }
 
@@ -212,9 +220,20 @@ func (v *verifier) checkEntry(i int, e Entry, line []byte) {
 		r.Gaps = append(r.Gaps, e)
 		r.DroppedCalls += e.Int("dropped")
 	}
+	v.checkIntentLink(e)
 	v.keep(e)
 	v.prevHash, v.prevSeq = e.Hash(), seq
 	r.LastSeq, r.HeadHash = seq, e.Hash()
+}
+
+// checkIntentLink applies the write-ahead checks to an intent or a call (SPEC §8 step 8).
+func (v *verifier) checkIntentLink(e Entry) {
+	switch e.Type() {
+	case TypeIntent:
+		v.checkIntent(e)
+	case TypeCall:
+		v.checkCompletion(e)
+	}
 }
 
 // checkTime requires a parseable timestamp and warns when time goes backwards.

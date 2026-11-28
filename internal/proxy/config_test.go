@@ -324,6 +324,29 @@ func TestLoadConfigChecksAnchorInterval(t *testing.T) {
 	})
 }
 
+func TestLoadConfigWriteAhead(t *testing.T) {
+	runValueCases(t, []valueCase{
+		{"on", `{"write_ahead":true}`, ""},
+		{"off", `{"write_ahead":false}`, ""},
+		{"wrong type", `{"write_ahead":"yes"}`, "cannot unmarshal string"},
+		{"a number", `{"write_ahead":1}`, "cannot unmarshal number"},
+	})
+	path := writeConfig(t, `{"write_ahead":true}`)
+	got, err := proxy.LoadConfig(path)
+	if err != nil || !got.WriteAhead {
+		t.Errorf("write_ahead true: got %v, %v", got.WriteAhead, err)
+	}
+	if def := proxy.DefaultConfig(); def.WriteAhead {
+		t.Error("write_ahead is on in the default config")
+	}
+	if got, err := proxy.LoadConfig(writeConfig(t, `{}`)); err != nil || got.WriteAhead {
+		t.Errorf("write_ahead left out: got %v, %v", got.WriteAhead, err)
+	}
+	if b := proxy.MarshalConfig(proxy.DefaultConfig()); !strings.Contains(string(b), `"write_ahead": false`) {
+		t.Errorf("the config 'ambermoth init' writes does not show write_ahead:\n%s", b)
+	}
+}
+
 func TestAnchorEvery(t *testing.T) {
 	cases := map[string]time.Duration{"": 0, "1s": time.Second, "1h30m": 90 * time.Minute}
 	for in, want := range cases {
@@ -350,7 +373,7 @@ var jsonBlockRE = regexp.MustCompile("(?s)```json\n(.*?)```")
 // Every JSON block in the README and the spec that looks like a config must
 // load, so a documented example never rots.
 func TestDocumentedConfigExamplesLoad(t *testing.T) {
-	keys := []string{"listen", "upstreams", "default_purpose", "key_defaults", "routes", "auto_enroll", "anchor_interval", "tsas"}
+	keys := []string{"listen", "upstreams", "default_purpose", "key_defaults", "routes", "auto_enroll", "anchor_interval", "write_ahead", "tsas"}
 	files := []string{"../../README.md", "../../docs/SPEC.md"}
 	for _, file := range files {
 		b, err := os.ReadFile(file)
