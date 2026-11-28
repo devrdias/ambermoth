@@ -1,0 +1,18 @@
+exit 0
+--- stdout
+Evidence pack verification: OK
+  format ambermoth-pack/1 · ledger 68b9e4ef-0c67-47a0-ba76-4fae6036231b · account (account not specified)
+  period 2026-03-16 → 2026-03-17 · 2 calls
+  files: 8 checked · totals recomputed from the ledger segment
+  summary.html: identical to a re-render from the verified ledger
+Ledger verification: OK
+  entries:   7 (seq 26…32), segment
+  head:      sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce
+  anchors:   1, anchored through seq 26, 5 entries after the last anchor
+    ✓ seq 26     2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+  anchor lag: largest 6199h25m29s (seq 26); 1 entries anchored more than 24h after their own timestamp
+  gaps:      1 gap entries, 2 calls not recorded (fail-open)
+  warning: 1 entries were first anchored more than 24h after their own timestamps (largest gap 6199h25m0s, seq 26): they are only proven to exist from their anchor time on
+  warning: the last 5 entries of the segment are not anchored (self-attested)
+  note: 5 context entries (key history / code links before the segment) are self-consistent; their chain membership is not covered by this segment
+--- stderr

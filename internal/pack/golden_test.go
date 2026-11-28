@@ -190,6 +190,23 @@ func TestGoldenPacks(t *testing.T) {
 
 func buildGolden(t *testing.T, c goldenCase) string {
 	t.Helper()
+	out, _ := goldenZip(t, c)
+	f, err := os.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// goldenZip builds the pack of c from its stored ledger and returns its path
+// and the TSA roots of that ledger.
+func goldenZip(t *testing.T, c goldenCase) (string, *x509.CertPool) {
+	t.Helper()
 	dir := t.TempDir()
 	copyTree(t, filepath.Join(goldenDir, c.fixture), dir)
 	pem, err := os.ReadFile(filepath.Join(dir, "roots.pem"))
@@ -208,16 +225,7 @@ func buildGolden(t *testing.T, c goldenCase) string {
 	if _, err := pack.Build(context.Background(), s, c.opts(o)); err != nil {
 		t.Fatalf("%s: Build: %v", c.name, err)
 	}
-	f, err := os.Open(o.Out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	return o.Out, roots
 }
 
 func writeGoldenFixtures(t *testing.T) {

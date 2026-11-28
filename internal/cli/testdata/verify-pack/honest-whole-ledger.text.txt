@@ -1,0 +1,22 @@
+exit 0
+--- stdout
+Evidence pack verification: OK
+  format ambermoth-pack/1 · ledger 68b9e4ef-0c67-47a0-ba76-4fae6036231b · account (account not specified)
+  period 2026-03-01 → 2026-04-30 · 16 calls
+  files: 12 checked · totals recomputed from the ledger segment
+  summary.html: identical to a re-render from the verified ledger
+Ledger verification: OK
+  entries:   33 (seq 0…32), from genesis
+  head:      sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce
+  anchors:   6, anchored through seq 26, 5 entries after the last anchor
+    ✓ seq 5      2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+    ✓ seq 5      2026-11-27T19:25:29.000Z  http://127.0.0.1:41225  Test TSA (pinned)
+    ✓ seq 13     2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+    ✓ seq 20     2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+    ✓ seq 20     2026-11-27T19:25:29.000Z  http://127.0.0.1:41225  Test TSA (pinned)
+    ✓ seq 26     2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+  anchor lag: largest 6523h25m29s (seq 0); 22 entries anchored more than 24h after their own timestamp
+  gaps:      2 gap entries, 4 calls not recorded (fail-open)
+  warning: 22 entries were first anchored more than 24h after their own timestamps (largest gap 6523h25m0s, seq 0): they are only proven to exist from their anchor time on
+  warning: the last 5 entries of the segment are not anchored (self-attested)
+--- stderr

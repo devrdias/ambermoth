@@ -1,0 +1,15 @@
+exit 1
+--- stdout
+Evidence pack verification: FAILED
+  format ambermoth-pack/1 · ledger 8325aa92-c788-4ddf-b672-c6d29795895d · account (account not specified)
+  period 2026-03-01 → 2026-04-30 · 3 calls
+  files: 6 checked · totals recomputed from the ledger segment
+  summary.html: identical to a re-render from the verified ledger
+Ledger verification: OK
+  entries:   7 (seq 0…6), from genesis
+  head:      sha256:2a44496393e583f6c9fb50a8ee97b62301f051417c71875a7569449865e39be4
+  anchors:   0 — nothing is anchored yet; run 'ambermoth anchor'
+  gaps:      1 gap entries, 2 calls not recorded (fail-open)
+  ERROR: extra.txt: present in zip but not listed in manifest
+  warning: the last 7 entries of the segment are not anchored (self-attested)
+--- stderr

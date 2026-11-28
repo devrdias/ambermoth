@@ -1,0 +1,17 @@
+exit 1
+--- stdout
+Evidence pack verification: FAILED
+  format ambermoth-pack/1 · ledger 8325aa92-c788-4ddf-b672-c6d29795895d · account (account not specified)
+  period 2026-03-01 → 2026-04-30 · 3 calls
+  files: 6 checked · totals recomputed from the ledger segment
+Ledger verification: FAILED
+  entries:   0 (seq 0…0), segment
+  head:      
+  anchors:   0 — nothing is anchored yet; run 'ambermoth anchor'
+  ERROR: ledger is empty
+  ERROR: ledger/segment.jsonl: SHA-256 does not match manifest (file altered)
+  ERROR: ledger/segment.jsonl: line 1 is longer than 16 MiB
+  ERROR: usage totals in manifest do not match totals recomputed from the ledger segment
+  ERROR: summary.html does not match a re-render from the verified ledger: it was edited after the pack was built. Read the verifier's report instead.
+  warning: the last 0 entries of the segment are not anchored (self-attested)
+--- stderr
