@@ -72,6 +72,7 @@ service for every program on the machine instead.
 ambermoth link --purpose eval-regression --repo ./eval-harness   # run in CI on every harness change
 ambermoth anchor                                                  # or set "anchor_interval": "1h"
 ambermoth verify                                                  # chain + anchors
+ambermoth repair --dry-run                                        # after a crash: cut a torn last line (look with --dry-run first)
 ambermoth alerts                                                  # volume spikes, narrow traffic, new keys
 ambermoth key rotate --provider anthropic --reason "suspected leak" --replaced-by sha256:…
 ambermoth amend --from-seq 120 --to-seq 340 --purpose eval-benchmark --reason "untagged nightly run" --by rafa

@@ -65,7 +65,7 @@ flowchart LR
 - [x] CI runs `make crap`
 - [x] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
   - Proxy p50 overhead 0.12 ms at 1 KB; pack build of 1M entries in 107.5 s, peak heap 887.6 MB. See [docs/benchmarks.md](docs/benchmarks.md).
-- [ ] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
+- [x] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
 - [ ] Write-ahead durability mode
 - [ ] External security review of the proxy
 - [ ] `make diagrams` regenerates the architecture images from the LikeC4 model (good first task)
