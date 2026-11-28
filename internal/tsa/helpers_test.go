@@ -18,7 +18,7 @@ type fixture struct {
 	resp   []byte
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t testing.TB) *fixture {
 	t.Helper()
 	auth := tsatest.New(t)
 	sum := sha256.Sum256([]byte("chain head"))
@@ -50,13 +50,13 @@ func signedData(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1,
 
 func encapContent(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 2) }
 
-func tstOctets(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 2, 1, 0) }
+func tstOctets(t testing.TB, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 2, 1, 0) }
 
 func certSet(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 3) }
 
 func signerInfos(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 4) }
 
-func signerInfo(t *testing.T, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 4, 0) }
+func signerInfo(t testing.TB, r *tsatest.Node) *tsatest.Node { return r.At(t, 1, 1, 0, 4, 0) }
 
 // SignerInfo fields: version, sid, digestAlgorithm, [0] signedAttrs, signatureAlgorithm, signature.
 const (
