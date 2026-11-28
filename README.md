@@ -59,6 +59,18 @@ strips every `X-Provenance-*` header before forwarding.
 client.messages.create(..., extra_headers={"X-Provenance-Purpose": "eval-regression"})
 ```
 
+By default a call is recorded after its response ends, so a crash can lose it. To record each call before it is
+sent, turn on write-ahead mode in `.ambermoth/config.json`:
+
+```json
+{"write_ahead": true}
+```
+
+The proxy then fsyncs an `intent` entry before it forwards a request, and writes the `call` entry when the call
+ends. If the intent cannot be written, the call is refused with a 503 and not sent. Leave it off if AI traffic
+must keep flowing when the ledger disk fails. `ambermoth verify` lists intents that have no call as information.
+See [docs/SPEC.md](docs/SPEC.md) §6.4 and [ADR-0004](docs/adr/0004-write-ahead-mode.md).
+
 To try it without API keys, run `go run ./examples/mockprovider` (a fake OpenAI/Anthropic on :9999) and
 point `.ambermoth/config.json` at `http://127.0.0.1:9999`.
 

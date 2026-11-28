@@ -527,6 +527,7 @@ func corpus() []corpusCase {
 	all = append(all, anchorCases()...)
 	all = append(all, timeCases()...)
 	all = append(all, damageCases()...)
+	all = append(all, intentCorpus()...)
 	return append(all, largeDamageCases()...)
 }
 

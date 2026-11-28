@@ -28,6 +28,9 @@ const (
 
 	truncMarker       = "…[truncated]"
 	invalidPurposeMsg = "invalid purpose header: "
+
+	// refusedBody is the answer to a call whose intent could not be written (SPEC §6.4).
+	refusedBody = `{"error":"ambermoth: write-ahead failed, call not sent"}`
 )
 
 // Proxy records every call it forwards.
@@ -41,6 +44,7 @@ type Proxy struct {
 	mu       sync.Mutex
 	known    map[string]bool // enrolled key fingerprints
 	upgrades map[*upgradeConn]struct{}
+	open     int // intents in the ledger at start that no call completes
 	log      *slog.Logger
 }
 
@@ -54,6 +58,8 @@ type call struct {
 	purpose, note, gitRef, keyFP  string
 	saltID                        string
 	entryKey                      []byte
+	callID                        string // write-ahead mode: the id of the intent,
+	intentSeq                     int64  // and its seq
 
 	reqMAC   hash.Hash
 	reqBytes int64
@@ -71,11 +77,7 @@ func New(cfg Config, s *ledger.Store, w *Writer, transport http.RoundTripper, lo
 	if err != nil {
 		return nil, err
 	}
-	for _, e := range entries {
-		if e != nil && e.Type() == ledger.TypeKeyEvent {
-			p.known[e.Str("key_fp")] = e.Str("action") != "revoke"
-		}
-	}
+	p.scanLedger(entries)
 	for name, u := range cfg.Upstreams {
 		target, err := url.Parse(u.BaseURL)
 		if err != nil {
@@ -100,6 +102,30 @@ func New(cfg Config, s *ledger.Store, w *Writer, transport http.RoundTripper, lo
 	return p, nil
 }
 
+// scanLedger learns the enrolled keys, and counts the intents that no call
+// completes, from the entries the proxy already reads at start.
+func (p *Proxy) scanLedger(entries []ledger.Entry) {
+	open := map[string]int64{} // call_id to intent seq
+	for _, e := range entries {
+		switch {
+		case e == nil:
+		case e.Type() == ledger.TypeKeyEvent:
+			p.known[e.Str("key_fp")] = e.Str("action") != "revoke"
+		case e.Type() == ledger.TypeIntent:
+			open[e.Str("call_id")] = e.Seq()
+		case e.Type() == ledger.TypeCall:
+			if seq, ok := open[e.Str("call_id")]; ok && seq == e.Int("intent_seq") {
+				delete(open, e.Str("call_id"))
+			}
+		}
+	}
+	p.open = len(open)
+}
+
+// OpenIntents is the number of intents in the ledger when the proxy started
+// that no call entry completes (SPEC §4.9).
+func (p *Proxy) OpenIntents() int { return p.open }
+
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	trimmed := strings.TrimPrefix(r.URL.Path, "/")
 	name, rest, _ := strings.Cut(trimmed, "/")
@@ -119,17 +145,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := &call{upstream: name, style: up.Style, path: "/" + rest, method: r.Method,
 		start: p.store.Now(), saltID: salt, entryKey: ek, reqMAC: hmac.New(sha256.New, ek)}
 
-	// Provenance headers: read, then strip before forwarding.
-	c.purpose = strings.TrimSpace(r.Header.Get("X-Provenance-Purpose"))
-	c.note = truncateUTF8(r.Header.Get("X-Provenance-Note"), maxNoteBytes)
-	c.gitRef = truncateUTF8(r.Header.Get("X-Provenance-Git-Ref"), maxGitRefBytes)
-	for k := range r.Header {
-		if strings.HasPrefix(strings.ToLower(k), "x-provenance-") {
-			r.Header.Del(k)
-		}
-	}
+	c.readProvenance(r)
 	c.keyFP = ledger.KeyFingerprint(extractKey(r))
 	p.resolvePurpose(c)
+	// After the intent, so a refused call does not mark its key enrolled.
+	if p.cfg.WriteAhead && !p.writeIntent(w, r, c) {
+		return
+	}
 	p.maybeEnroll(c.keyFP, name)
 
 	if r.Body != nil && r.Body != http.NoBody {
@@ -139,6 +161,64 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := context.WithValue(r.Context(), ctxKey{}, c)
 	rp.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// writeIntent records the intent of the call and waits until it is on disk. If
+// it cannot be written the call is refused with 503 and not forwarded: it is
+// not recorded, and not counted as dropped, since nothing was sent.
+func (p *Proxy) writeIntent(w http.ResponseWriter, r *http.Request, c *call) bool {
+	c.callID = ledger.NewCallID()
+	seq, err := p.writer.Intent(r.Context(), intentEntry(r, c))
+	if err != nil {
+		p.log.ErrorContext(r.Context(), "write-ahead failed, call refused", "provider", c.upstream, "error", err)
+		http.Error(w, refusedBody, http.StatusServiceUnavailable)
+		return false
+	}
+	c.intentSeq = seq
+	return true
+}
+
+// intentEntry is the intent of a call (SPEC §4.9). It holds nothing of the
+// body: that is hashed while it streams, after the forward.
+func intentEntry(r *http.Request, c *call) ledger.Entry {
+	e := ledger.Entry{
+		"type": ledger.TypeIntent, "ts": ledger.FormatTime(c.start), "call_id": c.callID,
+		"provider": c.upstream, "api_style": c.style, "endpoint": intentEndpoint(r, c.path),
+		"method": c.method, "path": cleanUTF8(c.path), "key_fp": c.keyFP, "purpose": c.purpose, "salt_id": c.saltID,
+	}
+	if n, ok := declaredBytes(r); ok {
+		e["declared_bytes_in"] = n
+	}
+	return e
+}
+
+// intentEndpoint is the endpoint class the call entry will have. An upgrade
+// request is a WebSocket session, which the call entry calls realtime.
+func intentEndpoint(r *http.Request, path string) string {
+	if strings.Contains(strings.ToLower(r.Header.Get("Upgrade")), "websocket") {
+		return "realtime"
+	}
+	return endpointClass(path)
+}
+
+// declaredBytes is the Content-Length of the request, if it has one.
+func declaredBytes(r *http.Request) (int64, bool) {
+	if r.ContentLength > 0 {
+		return r.ContentLength, true
+	}
+	return 0, r.ContentLength == 0 && r.Header.Get("Content-Length") != ""
+}
+
+// readProvenance reads the X-Provenance-* headers, then strips them so they are not forwarded.
+func (c *call) readProvenance(r *http.Request) {
+	c.purpose = strings.TrimSpace(r.Header.Get("X-Provenance-Purpose"))
+	c.note = truncateUTF8(r.Header.Get("X-Provenance-Note"), maxNoteBytes)
+	c.gitRef = truncateUTF8(r.Header.Get("X-Provenance-Git-Ref"), maxGitRefBytes)
+	for k := range r.Header {
+		if strings.HasPrefix(strings.ToLower(k), "x-provenance-") {
+			r.Header.Del(k)
+		}
+	}
 }
 
 func extractKey(r *http.Request) string {
@@ -513,6 +593,9 @@ func (p *Proxy) record(c *call, status int, stream bool, u *usage, outMAC []byte
 	if c.transport != "" {
 		e["transport"] = c.transport
 		e["endpoint"] = "realtime"
+	}
+	if c.callID != "" {
+		e["call_id"], e["intent_seq"] = c.callID, c.intentSeq
 	}
 	p.writer.Enqueue(e)
 }
