@@ -91,6 +91,9 @@ func printPackWritten(w io.Writer, m *pack.Manifest, out string) {
 	_, _ = fmt.Fprintf(w, "Evidence pack written: %s\n", out)
 	_, _ = fmt.Fprintf(w, "  %d calls, %d purposes, segment seq %d…%d (start anchored: %v, end anchored: %v)\n",
 		m.Totals.All.Calls, len(m.Totals.ByPurpose), m.Segment.FirstSeq, m.Segment.LastSeq, m.Segment.StartAnchored, m.Segment.EndAnchored)
+	if m.OrphanIntents > 0 {
+		_, _ = fmt.Fprintf(w, "  %s\n", pack.OrphanLine(m.OrphanIntents))
+	}
 	_, _ = fmt.Fprintln(w, "  Next: write your explanation in letter-template.md (inside the zip). Don't edit summary.html:")
 	_, _ = fmt.Fprintln(w, "        verify-pack re-renders it from the ledger and rejects any change. Then check it yourself:")
 	_, _ = fmt.Fprintf(w, "        ambermoth verify-pack %s --report report.html\n", out)
@@ -328,4 +331,16 @@ func printSummary(w io.Writer, sum *report.Summary) {
 		_, _ = fmt.Fprintf(w, "%-24s %10d %14d %14d %8d\n", p, b.Calls, b.TokensIn, b.TokensOut, b.Retagged)
 	}
 	_, _ = fmt.Fprintf(w, "\n%d key(s), %d code link(s), %d gap(s), %d amendment(s)\n", len(sum.Keys), len(sum.CodeLinks), len(sum.Gaps), len(sum.Amendments))
+	if sum.OrphanIntents > 0 {
+		_, _ = fmt.Fprintf(w, "%s\n", orphanReportLine(sum.OrphanIntents))
+	}
+}
+
+// orphanReportLine is the sentence of a pack for the intents of a ledger as a
+// whole, which has no segment.
+func orphanReportLine(n int) string {
+	if n == 1 {
+		return "1 intent has no call entry. It is a request the proxy began to send. Whether it was sent, or answered, is not known."
+	}
+	return fmt.Sprintf("%d intents have no call entry. Each is a request the proxy began to send. Whether it was sent, or answered, is not known.", n)
 }

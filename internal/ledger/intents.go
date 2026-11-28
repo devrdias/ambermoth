@@ -89,3 +89,37 @@ func (o openIntents) orphans() []OrphanIntent {
 	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
 	return out
 }
+
+// IntentTracker follows the intents and the calls that complete them in a
+// stream of entries, for tools that only need to know what is left open. It
+// does not check anything: Verify does that, and a call that names no open
+// intent is skipped here.
+type IntentTracker struct {
+	keep func(Entry) bool
+	open openIntents
+}
+
+// NewIntentTracker returns a tracker that follows the intents keep accepts; a
+// nil keep accepts all of them.
+func NewIntentTracker(keep func(Entry) bool) *IntentTracker {
+	return &IntentTracker{keep: keep, open: openIntents{}}
+}
+
+// Add feeds the next entry. Entries must come in ledger order; nil is skipped.
+func (t *IntentTracker) Add(e Entry) {
+	switch e.Type() {
+	case TypeIntent:
+		id := e.Str("call_id")
+		if id == "" || (t.keep != nil && !t.keep(e)) {
+			return
+		}
+		t.open[strings.Clone(id)] = OrphanIntent{Seq: e.Seq(), TS: strings.Clone(e.Str("ts")), Endpoint: strings.Clone(e.Str("endpoint"))}
+	case TypeCall:
+		if o, ok := t.open[e.Str("call_id")]; ok && o.Seq == e.Int("intent_seq") {
+			delete(t.open, e.Str("call_id"))
+		}
+	}
+}
+
+// Orphans lists the intents still open, in seq order; nil when there are none.
+func (t *IntentTracker) Orphans() []OrphanIntent { return t.open.orphans() }

@@ -101,3 +101,27 @@ The pack's limits are stated plainly in LIMITS.md.
 Regards,
 [Name, role, contact]
 `
+
+// The wording below is for packs that hold an intent entry (SPEC §9.5). The
+// texts above are shared by every pack and do not change.
+
+// orphanPlural and orphanSingular are the sentence for the intents of a
+// segment that no call entry in it completes (ADR-0004).
+const (
+	orphanPlural   = "%d intents have no call entry in this segment. Each is a request the proxy began to send. Whether it was sent, or answered, is not known."
+	orphanSingular = "1 intent has no call entry in this segment. It is a request the proxy began to send. Whether it was sent, or answered, is not known."
+)
+
+// orphanNearEnd is the caution that goes with the list of orphans.
+const orphanNearEnd = "An intent near the end of the segment may be completed by a call entry just after the segment, so look at the seq and time of the last ones."
+
+// orphanTotals says what the totals count.
+const orphanTotals = "The totals count call entries only."
+
+// orphanCapped is said when the list is shorter than the count.
+const orphanCapped = "The first %d are listed, in seq order; %d more are in ledger/segment.jsonl."
+
+// orphanLetter is a paragraph of the letter, put before the one on keys.
+const orphanLetter = `**Intents without a call entry.** %s
+They are listed in summary.html with their seq, time and endpoint.
+%s [If you know why, say so.]`

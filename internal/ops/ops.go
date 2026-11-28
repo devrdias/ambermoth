@@ -301,7 +301,39 @@ func Reconcile(s *ledger.Store, provider, csvPath string, tolerance float64) (le
 	led := dayTotals(entries, provider, days[0], days[len(days)-1])
 	cmp := compareDays(unionDays(days, led), exp, led, tolerance)
 	e := reconciliationEntry(provider, raw, days, sumTallies(led), cmp, tolerance)
-	return e, cmp.lines, s.Append(e)
+	lines := cmp.lines
+	if cmp.exportAbove {
+		lines = append(lines, orphanHint(periodOrphans(entries, provider, days[0], days[len(days)-1]))...)
+	}
+	return e, lines, s.Append(e)
+}
+
+// orphanHint is the line that says how many intents have no call entry, or
+// nothing when there are none. Intents are not calls, so they change no total
+// and the reconciliation entry does not carry them.
+func orphanHint(n int) []string {
+	switch n {
+	case 0:
+		return nil
+	case 1:
+		return []string{"1 intent in this period has no call entry. " + orphanHintTail}
+	}
+	return []string{fmt.Sprintf("%d intents in this period have no call entry. %s", n, orphanHintTail)}
+}
+
+const orphanHintTail = "A request that was sent and not recorded shows as export above ledger."
+
+// periodOrphans counts the provider's intents from the day first to the day
+// last, both inclusive, that no call entry completes.
+func periodOrphans(entries []ledger.Entry, provider, first, last string) int {
+	tr := ledger.NewIntentTracker(func(e ledger.Entry) bool {
+		d := e.Day()
+		return e.Str("provider") == provider && d >= first && d <= last
+	})
+	for _, e := range entries {
+		tr.Add(e)
+	}
+	return len(tr.Orphans())
 }
 
 // tally is a pair of token counts.
@@ -430,9 +462,10 @@ func sumTallies(m map[string]*tally) tally {
 
 // comparison is the per-day result of checking the ledger against the export.
 type comparison struct {
-	lines      []string
-	mismatched int64
-	export     tally
+	lines       []string
+	mismatched  int64
+	exportAbove bool // a mismatched day has an export above the ledger
+	export      tally
 }
 
 func compareDays(days []string, exp, led map[string]*tally, tolerance float64) comparison {
@@ -451,10 +484,17 @@ func compareDays(days []string, exp, led map[string]*tally, tolerance float64) c
 		if outside(l.in, x.in, tolerance) || outside(l.out, x.out, tolerance) {
 			status = "MISMATCH"
 			c.mismatched++
+			c.exportAbove = c.exportAbove || exportAbove(l, x, tolerance)
 		}
 		c.lines = append(c.lines, fmt.Sprintf("%s  ledger in/out %d/%d  export in/out %d/%d  %s", d, l.in, l.out, x.in, x.out, status))
 	}
 	return c
+}
+
+// exportAbove reports whether the export is above the ledger by more than the
+// tolerance in tokens in or out.
+func exportAbove(l, x *tally, tolerance float64) bool {
+	return (x.in > l.in && outside(l.in, x.in, tolerance)) || (x.out > l.out && outside(l.out, x.out, tolerance))
 }
 
 // outside reports whether ledger count a differs from export count b by more than tolerance.

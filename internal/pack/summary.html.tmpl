@@ -62,7 +62,12 @@
 {{end}}</table>
 <p><strong>Recording gaps:</strong> {{if .S.Gaps}}<span class="warn">{{len .S.Gaps}} gap(s)</span> — the proxy failed open and could not record some calls:{{else}}<span class="ok">none recorded</span>.{{end}}</p>
 {{if .S.Gaps}}<table><tr><th>Seq</th><th>From</th><th>Until</th><th class="n">Calls not recorded</th><th>Cause</th></tr>
-{{range .S.Gaps}}<tr><td>{{.Seq}}</td><td>{{.Str "since"}}</td><td>{{.Str "until"}}</td><td class="n">{{.Int "dropped"}}</td><td>{{.Str "cause"}}</td></tr>{{end}}</table>{{end}}
+{{range .S.Gaps}}<tr><td>{{.Seq}}</td><td>{{.Str "since"}}</td><td>{{.Str "until"}}</td><td class="n">{{.Int "dropped"}}</td><td>{{.Str "cause"}}</td></tr>{{end}}</table>{{end}}{{if .M.OrphanIntents}}
+<p><strong>Intents without a call entry:</strong> <span class="warn">{{.OrphanLine}}</span></p>
+<table><tr><th>Seq</th><th>Time</th><th>Endpoint</th></tr>
+{{range .M.Orphans}}<tr><td>{{.Seq}}</td><td class="mono">{{.TS}}</td><td>{{.Endpoint}}</td></tr>
+{{end}}</table>
+<p style="color:var(--muted);font-size:13px">{{.OrphanNote}}</p>{{end}}
 <p><strong>Billing reconciliation:</strong> {{if .S.Reconciliations}}{{range .S.Reconciliations}}{{.Str "provider"}} {{.Str "period_from"}} → {{.Str "period_to"}}: {{if eq (.Str "result") "match"}}<span class="ok">matches</span>{{else}}<span class="warn">mismatch on {{.Int "days_mismatched"}} day(s)</span>{{end}} (ledger {{fmtN (.Int "ledger_tokens_in")}} in / export {{fmtN (.Int "export_tokens_in")}} in; export file <code>{{short (.Str "source_sha256")}}</code>)<br>{{end}}{{else}}<span class="warn">not performed</span> — run <code>ambermoth reconcile</code> against the provider's usage export to show that no spend bypassed the ledger.{{end}}</p>
 
 <h2>3. Itemised usage by purpose</h2>
