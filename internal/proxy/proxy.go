@@ -277,7 +277,13 @@ type teeBody struct {
 	c  *call
 }
 
+// Read reports EOF again once the body has ended. The transport reads once more
+// after Content-Length bytes, by when the server may have closed the body for
+// an early reply, and the error from that would drop the upstream connection.
 func (t *teeBody) Read(b []byte) (int, error) {
+	if t.c.reqDone {
+		return 0, io.EOF
+	}
 	n, err := t.rc.Read(b)
 	if n > 0 {
 		t.c.reqMAC.Write(b[:n])
