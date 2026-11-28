@@ -11,7 +11,7 @@ make bench-1m    # pack at 1M entries
 Single sizes and filters work as usual, for example
 `go test ./internal/proxy -run '^$' -bench 'Proxied/1KB' -benchmem`. For pack, `AMBERMOTH_BENCH_SIZES=250000,500000`
 replaces the default sizes and `AMBERMOTH_BENCH_1M=1` adds 1M. A size is skipped when the temp directory has less
-than 3000 bytes of free disk per entry. A ledger of 1M entries takes about 0.85 GB.
+than 3000 bytes of free disk per entry. A ledger of 1M entries is 847 MB.
 
 ## Proxy overhead
 
@@ -37,7 +37,7 @@ regression trips it, and it is on in CI. It is skipped with `-race` and `-short`
 ## Pack build and verification
 
 `internal/pack/bench_test.go`. The generator writes a ledger through `Store.Append`, one batch per chunk, at
-about 11k entries/s. Entries are calls with the SPEC 4.2 fields over two providers, five models, eight purposes
+26k to 28k entries/s (100k: 26,374; 1M: 28,109 in the Verify run). Entries are calls with the SPEC 4.2 fields over two providers, five models, eight purposes
 and three keys, plus two gaps, amendments, key enrolments and a rotation. Each chunk ends with an anchor. Tokens
 are real `tsatest` tokens, one openssl run each, so a ledger gets 50 anchors whatever its size (at 1M, one
 anchor per 20000 entries). The ledger passes `ledger.Verify` with pinned roots, and a normal test checks that
@@ -45,8 +45,7 @@ and that packs built from it verify. The ledger covers 20 whole days ending befo
 
 - `BenchmarkBuild`: `pack.Build` over the whole ledger, and over days 9 and 10 (the middle 10%).
 - `BenchmarkVerifyPack`: `pack.VerifyPack` on those two packs.
-- `BenchmarkVerify`: read and verify the ledger file, as `ambermoth verify` does. `read-s/op` is the part spent
-  reading and parsing.
+- `BenchmarkVerify`: stream the ledger file through `ledger.VerifyReader`, as `ambermoth verify` does.
 
 `entries/s` is entries in the ledger for Build and Verify, and entries in the pack segment for VerifyPack.
 `peak-heap-MB` is the highest heap in use, sampled every 10 ms, above the heap at the start. It includes garbage
@@ -103,42 +102,49 @@ One run per size (a run of these takes minutes). Time in seconds, peak heap in M
 | 10k | Build, middle 10% | 1.38 | 7288 | 76 |
 | 10k | VerifyPack, whole | 1.53 | 6558 | 93 |
 | 10k | VerifyPack, middle 10% | 0.18 | 6626 | 12 |
-| 10k | Verify ledger | 1.16 | 8676 | 73 |
+| 10k | Verify ledger, before streaming | 1.16 | 8676 | 73 |
 | 100k | Build, whole ledger | 23.7 | 4223 | 1044 |
 | 100k | Build, middle 10% | 14.1 | 7097 | 744 |
 | 100k | VerifyPack, whole | 14.9 | 6725 | 905 |
 | 100k | VerifyPack, middle 10% | 1.68 | 7145 | 109 |
-| 100k | Verify ledger | 12.9 | 7733 | 746 |
+| 100k | Verify ledger, before streaming | 12.9 | 7733 | 746 |
+| 100k | Verify ledger, streamed | 5.95 | 16821 | 37.0 |
 | 250k | Build, whole ledger | 62.8 | 3983 | 2406 |
 | 250k | Build, middle 10% | 35.0 | 7151 | 1835 |
 | 250k | VerifyPack, whole | 36.1 | 6930 | 2287 |
 | 250k | VerifyPack, middle 10% | 4.41 | 6801 | 275 |
-| 250k | Verify ledger | 31.1 | 8045 | 1820 |
+| 250k | Verify ledger, before streaming | 31.1 | 8045 | 1820 |
 | 500k | Build, whole ledger | 125 | 3993 | 4824 |
 | 500k | Build, middle 10% | 77.2 | 6476 | 3850 |
 | 500k | VerifyPack, whole | 69.2 | 7228 | 4473 |
 | 500k | VerifyPack, middle 10% | 8.33 | 7205 | 558 |
-| 500k | Verify ledger | 62.3 | 8032 | 3756 |
+| 500k | Verify ledger, before streaming | 62.3 | 8032 | 3756 |
 
 Notes on how this was run: the 500k Build of the whole ledger comes from an earlier run of the same code that
 was cut off after that benchmark, and the 250k and 500k runs used `-benchtime 1x`.
 
 Scaling of Build over the whole ledger: 2.06 s, 23.7 s, 62.8 s and 125 s at 10k, 100k, 250k and 500k. From 100k
-on that is a steady 250 µs per entry, so time is linear, not quadratic. Heap is linear too, at about 9.6 KB per
-entry for Build and 7.5 KB for Verify. `Build` reads the whole ledger into memory (entries and raw lines), verifies
-it, and then verifies the segment again, which is why a whole-ledger Build costs twice a Verify. `Verify` and
-`VerifyPack` also hold everything. A middle-10% pack saves little on Build, since the whole ledger is still read and
-verified first.
+on that is a steady 250 µs per entry, so time is linear, not quadratic. Heap was linear too, at about 9.6 KB per
+entry for Build and 7.5 KB for Verify. These are the rows marked before streaming: `Build` read the whole ledger
+into memory (entries and raw lines), verified it, and then verified the segment again, which is why a whole-ledger
+Build cost twice a Verify. `Verify` and `VerifyPack` also held everything. A middle-10% pack saved little on Build,
+since the whole ledger was still read and verified first.
 
 ### 1M entries
 
-Not measured. A 1M Build of the whole ledger was started with `GOMEMLIMIT=6GiB` and was killed by the kernel
-for lack of memory at 6.2 GB resident, after about 3.7 minutes, and that is the evidence here. Going by the
-linear scaling above, and this is an extrapolation and not a measurement, 1M would take about 250 s for Build
-(under 5 minutes) and about 9.6 GB of heap, which this machine does not have.
+One run each (`-benchtime=1x`) on the machine above, with the pack code at 8e12604 and the Verify change in
+this commit. The ledger has 1,000,060 entries and 50 anchors, and is 847 MB on disk. Generating it took 35.6 s.
 
-Target met on this machine: **not shown**. The time extrapolates to inside 5 minutes, but 1M could not be run
-here, so the roadmap item stays open. `make bench-1m` needs a machine with roughly 12 GB of RAM.
+| Operation | Time | Entries/s | Peak heap (MB) |
+|---|---|---|---|
+| Build, whole ledger | 107.5 s | 9299 | 887.6 |
+| Build, middle 10% | 68.4 s | 14629 | 403.6 |
+| VerifyPack, whole | 70.5 s | 14180 | 1224 |
+| VerifyPack, middle 10% | 8.7 s | 13781 | 142.5 |
+| Verify ledger, streamed | 57.4 s | 17422 | 378.2 |
+
+Target met on this machine: **yes**. Build of the whole 1M ledger took 107.5 s, under the 300 s target. Each
+figure is one run, not a median.
 
 ## What the numbers point at
 
@@ -148,8 +154,7 @@ These were found by profiling and are not fixed here.
   the time and `canon.sortedKeys` about 30%, nearly all in `utf16Less`, which converts both keys to UTF-16 on every
   comparison. It is also a third of all bytes allocated. Entries are `map[string]any`, so each is sorted again on
   every hash and every check.
-- Memory is about 10 KB per entry, and nothing streams. At 1M entries Build needs about 10 GB. Reading the file
-  line by line and keeping only what the segment needs would remove that limit.
+- The ledger is read as a stream now. The highest peak heap of the 1M runs is 1224 MB (VerifyPack, whole ledger).
 - Build verifies the segment a second time.
 - The proxy scans the request body with `encoding/json` (`checkValid` and `skip`), the main cost at 256 KB, and
   `teeBody.Read` allocates 84% of the bytes allocated in that case.
