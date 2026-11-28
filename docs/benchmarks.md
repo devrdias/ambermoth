@@ -159,7 +159,13 @@ These were found by profiling and are not fixed here.
 - The proxy scans the request body with `encoding/json` (`checkValid` and `skip`), the main cost at 256 KB, and
   `teeBody.Read` allocates 84% of the bytes allocated in that case.
 - Streams allocate about 2200 times per call against 87 direct, around 40 per event.
-- Intermittent truncated streams. With 50 flushed events and sequential calls, about 1 call in 2000 to 25000
-  failed with `unexpected EOF`, the proxy logging `use of closed network connection`. It also happens with a plain
-  `httputil.ReverseProxy` and `FlushInterval: -1` and no ambermoth code, and never directly, so it is in how Go's
-  reverse proxy ends a stream, not in the recording. The stream benchmarks count such calls in `failed` and go on.
+- Intermittent truncated streams, fixed. With 50 flushed events and sequential calls, about 1 call in 2000 to
+  25000 failed with `unexpected EOF`, the proxy logging `use of closed network connection`. The cause is a race in
+  Go's `net/http` (1.24, 1.25 and 1.26 have the same code). After copying Content-Length bytes,
+  `transferWriter.writeBody` reads the request body once more. If the upstream has already answered, the server has
+  closed the incoming body by then, the read fails with `http: invalid Read on closed Body`, and
+  `persistConn.writeLoop` closes the upstream connection in the middle of the stream. A plain `httputil.ReverseProxy`
+  does the same. `teeBody.Read` now returns EOF again once the body has ended, so that read never reaches the closed
+  body. The stream benchmarks still count failed calls in `failed` and go on.
+- Not fixed, not decided: a stream cut for any reason is recorded with `client_aborted` true, whoever cut it, and
+  with the tokens that had been read, which is 0 if the usage chunk had not arrived.
