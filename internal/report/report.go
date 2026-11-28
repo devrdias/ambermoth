@@ -16,9 +16,16 @@ type Filter struct {
 }
 
 func (f Filter) Match(e ledger.Entry) bool {
-	if e.Type() != ledger.TypeCall {
-		return false
-	}
+	return e.Type() == ledger.TypeCall && f.within(e)
+}
+
+// matchIntent is Match for an intent entry.
+func (f Filter) matchIntent(e ledger.Entry) bool {
+	return e.Type() == ledger.TypeIntent && f.within(e)
+}
+
+// within reports whether e is from the provider and the period of f.
+func (f Filter) within(e ledger.Entry) bool {
 	if f.Provider != "" && e.Str("provider") != f.Provider {
 		return false
 	}
@@ -116,6 +123,10 @@ type Summary struct {
 	Keys            []*KeyInfo
 	Original        map[int64]string // seq -> original purpose (for retagged calls)
 	Effective       map[int64]string // seq -> effective purpose
+	// OrphanIntents counts the intents f matched that no call completes, and
+	// Orphans lists them. They are not calls: Totals never include them.
+	OrphanIntents int                   `json:",omitempty"`
+	Orphans       []ledger.OrphanIntent `json:",omitempty"`
 }
 
 // EffectivePurposes applies amendments in ledger order (SPEC §4.3).
@@ -184,11 +195,13 @@ type Summarizer struct {
 	recons     []ledger.Entry
 	keys       map[string]*KeyInfo
 	strs       map[string]string // interned call strings
+	intents    *ledger.IntentTracker
 }
 
 // NewSummarizer returns an empty Summarizer for filter f.
 func NewSummarizer(f Filter) *Summarizer {
-	return &Summarizer{f: f, eff: map[int64]string{}, keys: map[string]*KeyInfo{}, strs: map[string]string{}}
+	return &Summarizer{f: f, eff: map[int64]string{}, keys: map[string]*KeyInfo{}, strs: map[string]string{},
+		intents: ledger.NewIntentTracker(f.matchIntent)}
 }
 
 // Add feeds the next entry. Entries must come in ledger order; nil is skipped.
@@ -196,6 +209,7 @@ func (z *Summarizer) Add(e ledger.Entry) {
 	if e == nil {
 		return
 	}
+	z.intents.Add(e) // it looks at intents and at the calls that complete them
 	switch e.Type() {
 	case ledger.TypeCall:
 		z.addCall(e)
@@ -277,6 +291,8 @@ func (z *Summarizer) Summary() *Summary {
 	for i := range z.calls {
 		z.place(s, &z.calls[i])
 	}
+	s.Orphans = z.intents.Orphans()
+	s.OrphanIntents = len(s.Orphans)
 	s.Amendments = z.matchedAmendments()
 	s.Keys = z.sortedKeys()
 	return s

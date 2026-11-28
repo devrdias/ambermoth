@@ -66,7 +66,7 @@ flowchart LR
 - [x] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
   - Proxy p50 overhead 0.12 ms at 1 KB; pack build of 1M entries in 107.5 s, peak heap 887.6 MB. See [docs/benchmarks.md](docs/benchmarks.md).
 - [x] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
-- [ ] Write-ahead durability mode ([ADR-0004](docs/adr/0004-write-ahead-mode.md), accepted; the proxy, ledger and verify side is done, packs and reports are next)
+- [x] Write-ahead durability mode ([ADR-0004](docs/adr/0004-write-ahead-mode.md)): an `intent` entry is fsynced before the forward; `verify`, packs (`ambermoth-pack/2`), `report` and `reconcile` show the orphans
 - [ ] External security review of the proxy
 - [ ] `make diagrams` regenerates the architecture images from the LikeC4 model (good first task)
 

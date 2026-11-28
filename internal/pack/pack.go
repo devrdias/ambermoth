@@ -102,7 +102,12 @@ type Manifest struct {
 	ContextEntries int           `json:"context_entries"`
 	Disclosed      []int64       `json:"disclosed"`
 	Totals         report.Totals `json:"totals"`
-	Files          []File        `json:"files"`
+	// OrphanIntents and Orphans are in a pack/2 only, and only when the segment
+	// has intents that no call entry in it completes. Orphans lists the first
+	// maxOrphansListed; OrphanIntents is the whole count.
+	OrphanIntents int                   `json:"orphan_intents,omitempty"`
+	Orphans       []ledger.OrphanIntent `json:"orphans,omitempty"`
+	Files         []File                `json:"files"`
 }
 
 func (o Options) filter() report.Filter {
@@ -222,6 +227,7 @@ type cut struct {
 	anchors     []ledger.Entry
 	segSum      string // sha256 of the segment file
 	segBytes    int64
+	intents     int             // intent entries in the segment
 	summary     *report.Summary // context entries, then the segment
 	report      *ledger.Report  // verification of the segment
 }
@@ -262,8 +268,11 @@ func (src *source) scanSegment(c *cut, z *report.Summarizer) error {
 		}
 		c.last = e
 		n++
-		if e.Type() == ledger.TypeAnchor {
+		switch e.Type() {
+		case ledger.TypeAnchor:
 			c.anchors = append(c.anchors, e)
+		case ledger.TypeIntent:
+			c.intents++
 		}
 	}
 	err := src.readSegment(c, see)
@@ -362,6 +371,10 @@ func (c *cut) manifest(s *ledger.Store, o Options, disclosed []int64) *Manifest 
 	}
 	if m.Account == "" {
 		m.Account = "(account not specified)"
+	}
+	if c.intents > 0 {
+		m.Format = FormatV2
+		m.OrphanIntents, m.Orphans = orphanClaim(c.report.Orphans)
 	}
 	return m
 }
@@ -632,6 +645,7 @@ func renderSummary(m *Manifest, s *report.Summary, v *ledger.Report, banner *Ver
 	err = t.Execute(&buf, map[string]any{
 		"M": m, "S": s, "T": m.Totals, "V": v, "Purposes": rs, "Top": top,
 		"Providers": keys(provSet), "Models": keys(modelSet), "Limits": LimitsText, "Banner": banner,
+		"OrphanLine": orphanLine(m), "OrphanNote": orphanNote(m),
 	})
 	return buf.Bytes(), err
 }
@@ -662,7 +676,7 @@ func renderLetter(m *Manifest, s *report.Summary) ([]byte, error) {
 	if err := t.Execute(&b, d); err != nil {
 		return nil, fmt.Errorf("rendering letter: %w", err)
 	}
-	return b.Bytes(), nil
+	return withOrphanParagraph(b.Bytes(), m), nil
 }
 
 // codeLinkFor returns "repo @ short-commit" and the first commit day of the
@@ -851,6 +865,7 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 	if err := c.checkSegment(); err != nil {
 		return nil, err
 	}
+	c.checkIntents()
 	c.checkAnchoringClaims()
 	c.checkContext()
 	c.checkDisclosures()
@@ -891,6 +906,7 @@ type segmentFacts struct {
 	firstLine []byte
 	last      ledger.Entry // nil when the line did not parse
 	end       int64        // where the last line ends
+	intents   int          // lines that are intent entries
 }
 
 func (f *segmentFacts) see(e ledger.Entry, line []byte, off int64) {
@@ -898,6 +914,9 @@ func (f *segmentFacts) see(e ledger.Entry, line []byte, off int64) {
 		f.first, f.firstLine = e, append([]byte(nil), line...)
 	}
 	f.last = e
+	if e.Type() == ledger.TypeIntent {
+		f.intents++
+	}
 	f.n++
 	f.end = off + int64(len(line))
 }
@@ -913,7 +932,7 @@ func newPackCheck(files map[string][]byte, o VerifyOptions) (*packCheck, error) 
 	}
 	c := &packCheck{o: o, files: files, mb: mb, m: &m, r: &PackReport{Manifest: &m}}
 	c.filter, c.periodOK = periodFilter(&m)
-	if m.Format != Format {
+	if !knownFormat(m.Format) {
 		c.errf("unsupported pack format %q (this verifier supports %s)", m.Format, Format)
 	}
 	return c, nil
@@ -1304,6 +1323,9 @@ func (c *packCheck) checkManifestTimestamp() {
 }
 
 func (c *packCheck) addNotes() {
+	if n := c.r.Ledger.OrphanIntents; n > 0 {
+		c.r.Notes = append(c.r.Notes, OrphanLine(n))
+	}
 	if len(c.m.Disclosed) > 0 {
 		c.r.Notes = append(c.r.Notes, fmt.Sprintf("%d entr(ies) disclosed for sample checking: %v", len(c.m.Disclosed), c.m.Disclosed))
 	}
@@ -1319,6 +1341,7 @@ func (c *packCheck) addNotes() {
 func (c *packCheck) renderReport() {
 	rm := *c.m
 	rm.Totals = c.totals
+	rm.OrphanIntents, rm.Orphans = orphanClaim(c.r.Ledger.Orphans)
 	ctxSummary := c.summary
 	note := c.compareSummary(&rm, ctxSummary)
 	r := c.r

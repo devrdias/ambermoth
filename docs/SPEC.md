@@ -1,6 +1,6 @@
 # ambermoth — Technical Specification
 
-Status: Draft v0.1 · 25 Nov 2026 · Ledger format `ambermoth-ledger/1` · Pack format `ambermoth-pack/1`
+Status: Draft v0.1 · 25 Nov 2026 · Ledger format `ambermoth-ledger/1` · Pack formats `ambermoth-pack/1` and `/2`
 
 This document turns the product spec ("AI-Usage Provenance Ledger", v0.1) into
 exact, implementable rules. Anyone should be able to write a second, independent
@@ -517,7 +517,9 @@ A verifier MUST check, in order, and report every failure (not stop at the first
 
 Exit status 0 only if steps 1, 2, 3 and 5 pass and step 8 finds no error. Orphans do not change it.
 
-## 9. Evidence pack (`ambermoth-pack/1`)
+A pack carries the orphans of its segment, and `verify-pack` recomputes them with this step (§9.5).
+
+## 9. Evidence pack (`ambermoth-pack/1`, `/2`)
 
 `ambermoth pack --from DATE --to DATE [--provider P] [--disclose seq,…] [--tsa URL] --out pack.zip`
 
@@ -541,7 +543,8 @@ as `ledger/genesis.json` so `ledger_id` and the key commitment are known.
 ```
 pack.zip
   manifest.json            format, ledger_id, period, filter, segment range,
-                           totals (machine-readable), files[] with sha256
+                           totals (machine-readable), files[] with sha256;
+                           in a pack/2 also the orphan intents (§9.5)
   manifest.tsr             optional RFC 3161 token over sha256(manifest.json)
   summary.html             human-readable report (Appendix A items 1–8),
                            a deterministic render of the data (§9.3)
@@ -562,7 +565,8 @@ set and accepts that.
 
 `ambermoth verify-pack pack.zip [--report report.html] [--tsa-ca root.pem] [--allow-unpinned-tsa]`
 
-Checks every `files[]` hash and that the pack holds every file §9.2 defines
+Accepts `ambermoth-pack/1` and `ambermoth-pack/2`, and refuses any other format (`unsupported pack format`).
+A pack/2 is checked as in §9.5, on top of what follows. Checks every `files[]` hash and that the pack holds every file §9.2 defines
 for it: `manifest.json`, `summary.html`, `LIMITS.md`, `VERIFY.md`,
 `letter-template.md`, `ledger/genesis.json`, `ledger/segment.jsonl`, the token
 of every anchor entry in the segment, `ledger/context.jsonl` when
@@ -618,6 +622,36 @@ not a command error.
 | 8 | Limits statement | `LIMITS.md`, also in `summary.html` |
 | 9 | Narrative letter | `letter-template.md` |
 
+### 9.5 Packs with intents (`ambermoth-pack/2`)
+
+A pack whose segment holds at least one `intent` entry (§4.9) is `ambermoth-pack/2`. That holds whether or not
+every intent is completed: a segment of completed intents is a pack/2 with no orphans. Any other pack is
+`ambermoth-pack/1`, byte for byte as before the mode existed. Only the segment counts. A call in the segment
+whose intent lies before it does not make a pack/2, and is not an error (§8 step 8). The layout, the hashes and
+the canonical form are those of pack/1. A verifier that knows only pack/1 refuses a pack/2 by name, so a
+reviewer on an old tool is told to upgrade instead of reading a summary that leaves the orphans out.
+
+The orphans are the intents of the segment that no `call` entry in the segment completes, whatever the period and
+the provider filter of the pack: the segment is the unit, and it is in the pack in full. A pack/2 says so in three
+places, and only when there is at least one orphan:
+
+- `manifest.json` has `orphan_intents`, the count, and `orphans`, a list of `seq`, `ts` and `endpoint` in seq
+  order. The list holds the first 50; the count is always whole. Both fields are left out of a pack/1.
+- `summary.html` has a line apart from the calls, and the list: "N intents have no call entry in this segment.
+  Each is a request the proxy began to send. Whether it was sent, or answered, is not known." For one, "1 intent
+  has no call entry in this segment. It is a request the proxy began to send. ..." Under the list it says how many
+  more there are past the 50, that the totals count `call` entries only, and that an intent near the end of the
+  segment may be completed by a call entry just after it. A reviewer sees that from the `seq` and `ts`.
+- `letter-template.md` has a paragraph with the same sentence, before the one on keys.
+
+Totals, purposes and keys come from `call` entries only. An intent is not a call.
+
+`verify-pack` of a pack/2 recomputes the orphans from the segment, by §8 step 8, and compares the count and the
+list with the manifest. It is an error when they differ, when the format is pack/2 and the segment holds no
+`intent`, or when it is pack/1 and the segment holds one. `summary.html` is rendered again from the recomputed
+orphans, like the totals, and the sender's copy has to match. The note "N intents have no call entry in this
+segment ..." is part of the verifier's output, and the report it writes with `--report`.
+
 ## 10. Reconciliation and alerts
 
 - `ambermoth reconcile --provider P --csv usage.csv` — CSV with header
@@ -635,12 +669,20 @@ not a command error.
   the value; rows are never skipped, and nothing is appended. The tolerance is
   a fraction from 0 to 1; anything else is refused. It is recorded as
   `tolerance_pct`, in whole percent, rounded to the nearest (0.29 is 29).
+  Intents are not calls and change no total. When a day is a mismatch with the export above the ledger and the
+  ledger has intents of that provider, inside the period, that no `call` completes, the command prints their
+  count after the day lines: "N intents in this period have no call entry. A request that was sent and not
+  recorded shows as export above ledger." It is a hint on the terminal. The `reconciliation` entry does not
+  carry it.
+- `ambermoth report` prints a line with the count of intents that have no call entry, under the same filter as
+  its totals, when there is at least one. The totals count `call` entries only.
 - `ambermoth alerts` — advisory only, phrased as "review this":
   - *volume*: a key/purpose's daily calls > 3× its trailing 14-day median;
   - *concentration*: one endpoint/purpose > 80% of a key's last-7-day calls
     with > 1,000 calls (thresholds configurable);
   - *new key*: an `auto_enroll` event in the window.
-  There is no webhook or email delivery; the output is the terminal.
+  There is no webhook or email delivery; the output is the terminal. Alerts ignore intents: they carry no
+  volume, and `verify` lists them.
 
 ## 11. Threat model (summary)
 
@@ -661,4 +703,5 @@ not a command error.
 
 SDK wrappers (Bedrock/Azure), Gemini-native API (use its OpenAI-compatible
 endpoint), content escrow, public transparency anchoring, dashboards, SSO.
-Write-ahead mode (§6.4) is opt-in and covers traffic through the proxy only.
+Write-ahead mode (§6.4) is opt-in and covers traffic through the proxy only. A pack/2 lists the orphans of its
+segment (§9.5); it does not say whether the request behind one was sent.

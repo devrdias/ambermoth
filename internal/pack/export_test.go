@@ -29,3 +29,6 @@ func CountVerify(o Options, calls *[]int) Options {
 	}
 	return o
 }
+
+// MaxOrphansListed is how many orphan intents a pack lists.
+const MaxOrphansListed = maxOrphansListed
