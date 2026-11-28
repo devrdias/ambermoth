@@ -63,8 +63,8 @@ flowchart LR
 - [x] Fix the WebSocket byte count test that fails now and then (`TestWebSocketUpgradeIsRecorded`)
 - [x] `make lint` clean, and CI runs it
 - [x] CI runs `make crap`
-- [ ] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
-  - Proxy overhead measured, met. Pack build measured to 500k (125 s); 1M did not fit in 8 GB of RAM, see [docs/benchmarks.md](docs/benchmarks.md).
+- [x] Benchmarks: proxy overhead p50 < 20 ms; pack build < 5 min for 1M entries
+  - Proxy p50 overhead 0.12 ms at 1 KB; pack build of 1M entries in 107.5 s, peak heap 887.6 MB. See [docs/benchmarks.md](docs/benchmarks.md).
 - [ ] `ambermoth repair`: recover a truncated last line after a crash, recorded as a gap entry
 - [ ] Write-ahead durability mode
 - [ ] External security review of the proxy

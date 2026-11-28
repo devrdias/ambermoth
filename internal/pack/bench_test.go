@@ -408,26 +408,32 @@ func BenchmarkVerify(b *testing.B) {
 	}
 }
 
-// runVerify does what `ambermoth verify` does: read the file, then verify it.
+// runVerify does what `ambermoth verify` does: stream the file through VerifyReader.
 func runVerify(b *testing.B, n int) {
 	bl := benchFixture(b, n)
 	opt := ledger.VerifyOptions{AnchorDir: filepath.Join(bl.dir, ledger.AnchorDir), CheckAnchor: ops.AnchorVerifier(bl.roots, false)}
-	var read time.Duration
 	b.ReportAllocs()
 	b.ResetTimer()
 	h := startHeapPeak()
 	for i := 0; i < b.N; i++ {
-		t := time.Now()
-		es, lines, err := ledger.ReadFile(bl.ledgerPath())
-		read += time.Since(t)
+		r, err := verifyLedgerFile(bl.ledgerPath(), opt)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if r := ledger.Verify(es, lines, opt); !r.OK() {
+		if !r.OK() {
 			b.Fatalf("Verify: %v", r.Errors)
 		}
 	}
 	b.StopTimer()
-	b.ReportMetric(read.Seconds()/float64(b.N), "read-s/op")
 	reportRate(b, bl.entries, h)
+}
+
+// verifyLedgerFile opens path and verifies it one line at a time, as the CLI does.
+func verifyLedgerFile(path string, opt ledger.VerifyOptions) (*ledger.Report, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return ledger.VerifyReader(f, opt)
 }

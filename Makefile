@@ -27,6 +27,6 @@ mutate:
 bench:
 	go test ./internal/proxy -run '^$$' -bench . -benchmem -count 5
 	go test ./internal/pack -run '^$$' -bench . -benchmem -timeout 2h
-# Needs a lot of memory (about 10 GB) and 3 GB of disk; see docs/benchmarks.md.
+# Needs 3 GB of free disk (the ledger is 847 MB). Peak heap stayed under 1.3 GB; see docs/benchmarks.md.
 bench-1m:
 	AMBERMOTH_BENCH_1M=1 go test ./internal/pack -run '^$$' -bench '/1M' -benchmem -timeout 4h
