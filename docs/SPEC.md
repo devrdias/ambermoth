@@ -301,7 +301,8 @@ true. The call is recorded either way.
   `fsync`ed at least every 200 ms. This is best-effort durability (an entry
   may be lost if the host crashes within that window); a crash leaves at most a
   truncated final line, which `verify` reports and `ambermoth repair` removes
-  with a `gap` entry. Write-ahead mode is future work.
+  with a `gap` entry. Write-ahead mode is proposed in
+  [ADR-0004](adr/0004-write-ahead-mode.md) and not implemented.
 - Repair (`ambermoth repair [--dry-run] [--json]`). It touches only the bytes
   after the last newline, and never edits or removes a complete entry.
   - Checks. The ledger up to the last newline must verify (§8 steps 1 to 3);
