@@ -702,48 +702,119 @@ type PackReport struct {
 
 func (r *PackReport) OK() bool { return len(r.Errors) == 0 && r.Ledger != nil && r.Ledger.OK() }
 
+// maxPackBytes is how much a pack may hold uncompressed, in all or in one file.
+const maxPackBytes = 1 << 30
+
 // ReadPack loads all files from a pack zip.
 func ReadPack(path string) (map[string][]byte, error) {
+	files, _, err := scanPack(path, "")
+	return files, err
+}
+
+// streamedFile is what scanPack keeps of the file it hashes instead of loading.
+type streamedFile struct {
+	present bool
+	sum     string // "sha256:" and the hex of the file's SHA-256
+}
+
+// scanPack reads the zip at path as ReadPack does, except that the file called
+// stream is hashed while it is read and not kept. Its contents are read again
+// with openEntry when they are needed.
+func scanPack(path, stream string) (map[string][]byte, streamedFile, error) {
+	var sf streamedFile
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, sf, err
+	}
+	defer func() { _ = zr.Close() }()
+	files := map[string][]byte{}
+	seen := map[string]bool{}
+	var total int64
+	for _, f := range zr.File {
+		if err := checkEntryName(f, seen); err != nil {
+			return nil, sf, err
+		}
+		if f.UncompressedSize64 > maxPackBytes {
+			return nil, sf, fmt.Errorf("%s: too large", f.Name)
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, sf, err
+		}
+		n, err := readEntry(rc, f.Name == stream, maxPackBytes-total+1, files, &sf, f.Name)
+		_ = rc.Close()
+		if err != nil {
+			return nil, sf, err
+		}
+		if total += n; total > maxPackBytes {
+			return nil, sf, errors.New("pack is larger than 1 GiB uncompressed")
+		}
+		seen[f.Name] = true
+	}
+	return files, sf, nil
+}
+
+// readEntry reads up to limit bytes of a zip entry into files, or only hashes
+// them when stream is set. It returns how many bytes it read.
+func readEntry(rc io.Reader, stream bool, limit int64, files map[string][]byte, sf *streamedFile, name string) (int64, error) {
+	if !stream {
+		b, err := io.ReadAll(io.LimitReader(rc, limit))
+		if err != nil {
+			return 0, err
+		}
+		files[name] = b
+		return int64(len(b)), nil
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(rc, limit))
+	if err != nil {
+		return 0, err
+	}
+	*sf = streamedFile{present: true, sum: "sha256:" + hex.EncodeToString(h.Sum(nil))}
+	return n, nil
+}
+
+// openEntry opens one file of the zip at path for reading.
+func openEntry(path, name string) (io.ReadCloser, error) {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = zr.Close() }()
-	const maxTotal = 1 << 30 // 1 GiB uncompressed per pack
-	files := map[string][]byte{}
-	var total int64
 	for _, f := range zr.File {
-		if err := checkEntryName(f, files); err != nil {
-			return nil, err
-		}
-		if f.UncompressedSize64 > maxTotal {
-			return nil, fmt.Errorf("%s: too large", f.Name)
+		if f.Name != name {
+			continue
 		}
 		rc, err := f.Open()
 		if err != nil {
+			_ = zr.Close()
 			return nil, err
 		}
-		b, err := io.ReadAll(io.LimitReader(rc, maxTotal-total+1))
-		_ = rc.Close()
-		if err != nil {
-			return nil, err
-		}
-		if total += int64(len(b)); total > maxTotal {
-			return nil, errors.New("pack is larger than 1 GiB uncompressed")
-		}
-		files[f.Name] = b
+		return entryReader{rc, zr}, nil
 	}
-	return files, nil
+	_ = zr.Close()
+	return nil, fmt.Errorf("%s: not in the pack", name)
+}
+
+// entryReader closes the zip with the entry.
+type entryReader struct {
+	io.ReadCloser
+	zr *zip.ReadCloser
+}
+
+func (e entryReader) Close() error {
+	err := e.ReadCloser.Close()
+	_ = e.zr.Close()
+	return err
 }
 
 // checkEntryName refuses the zip entries that could land outside the pack when
 // someone unzips it, or that hide one file behind another: names that are not a
 // plain relative path, repeated names, and anything but a regular file.
-func checkEntryName(f *zip.File, seen map[string][]byte) error {
+func checkEntryName(f *zip.File, seen map[string]bool) error {
 	if !fs.ValidPath(f.Name) || strings.Contains(f.Name, `\`) {
 		return fmt.Errorf("zip entry %q: unsafe name (want a relative path with no \"..\" or empty parts and no backslash)", f.Name)
 	}
-	if _, dup := seen[f.Name]; dup {
+	if seen[f.Name] {
 		return fmt.Errorf("zip entry %q: appears more than once", f.Name)
 	}
 	if !f.Mode().IsRegular() {
@@ -765,7 +836,7 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 	if o.Clock == nil {
 		return nil, ledger.ErrNilClock
 	}
-	files, err := ReadPack(path)
+	files, seg, err := scanPack(path, segmentName)
 	if err != nil {
 		return nil, err
 	}
@@ -773,10 +844,13 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.path, c.segFile = path, seg
 	c.checkFiles()
 	c.checkRequired()
 	c.checkGenesis()
-	c.checkSegment()
+	if err := c.checkSegment(); err != nil {
+		return nil, err
+	}
 	c.checkAnchoringClaims()
 	c.checkContext()
 	c.checkDisclosures()
@@ -787,18 +861,45 @@ func VerifyPack(path string, o VerifyOptions) (*PackReport, error) {
 	return c.r, nil
 }
 
-// packCheck holds the state of one VerifyPack run.
+// packCheck holds the state of one VerifyPack run. The segment is not in
+// files: it is streamed out of the zip at path, and seg is what the checks
+// keep of it.
 type packCheck struct {
 	o          VerifyOptions
+	path       string
 	files      map[string][]byte
+	segFile    streamedFile
 	mb         []byte // manifest.json as stored
 	m          *Manifest
 	r          *PackReport
 	genesis    []byte // trimmed genesis line
-	seg        []ledger.Entry
+	seg        segmentFacts
 	ctxEntries []ledger.Entry
+	ctxErr     error
+	ctxPresent bool
 	filter     report.Filter
-	totals     report.Totals // recomputed from the segment
+	periodOK   bool
+	totals     report.Totals   // recomputed from the segment
+	summary    *report.Summary // context entries, then the segment
+}
+
+// segmentFacts is what the checks need of the segment's lines, taken as they
+// stream past.
+type segmentFacts struct {
+	n         int          // lines, readable or not
+	first     ledger.Entry // nil when the line did not parse
+	firstLine []byte
+	last      ledger.Entry // nil when the line did not parse
+	end       int64        // where the last line ends
+}
+
+func (f *segmentFacts) see(e ledger.Entry, line []byte, off int64) {
+	if f.n == 0 {
+		f.first, f.firstLine = e, append([]byte(nil), line...)
+	}
+	f.last = e
+	f.n++
+	f.end = off + int64(len(line))
 }
 
 func newPackCheck(files map[string][]byte, o VerifyOptions) (*packCheck, error) {
@@ -811,6 +912,7 @@ func newPackCheck(files map[string][]byte, o VerifyOptions) (*packCheck, error) 
 		return nil, fmt.Errorf("manifest.json: %w", err)
 	}
 	c := &packCheck{o: o, files: files, mb: mb, m: &m, r: &PackReport{Manifest: &m}}
+	c.filter, c.periodOK = periodFilter(&m)
 	if m.Format != Format {
 		c.errf("unsupported pack format %q (this verifier supports %s)", m.Format, Format)
 	}
@@ -828,11 +930,11 @@ func (c *packCheck) checkFiles() {
 	listed := map[string]bool{"manifest.json": true, "manifest.tsr": true}
 	for _, f := range c.m.Files {
 		listed[f.Path] = true
-		b, ok := c.files[f.Path]
+		sum, ok := c.fileSum(f.Path)
 		switch {
 		case !ok:
 			c.errf("%s: listed in manifest but missing", f.Path)
-		case ledger.SHA256Bytes(b) != f.SHA256:
+		case sum != f.SHA256:
 			c.errf("%s: SHA-256 does not match manifest (file altered)", f.Path)
 		}
 	}
@@ -841,6 +943,27 @@ func (c *packCheck) checkFiles() {
 			c.errf("%s: present in zip but not listed in manifest", n)
 		}
 	}
+	if c.segFile.present && !listed[segmentName] {
+		c.errf("%s: present in zip but not listed in manifest", segmentName)
+	}
+}
+
+// has reports whether the pack holds a file called name.
+func (c *packCheck) has(name string) bool {
+	_, ok := c.fileSum(name)
+	return ok
+}
+
+// fileSum returns the SHA-256 of a file of the pack, and whether it is there.
+func (c *packCheck) fileSum(name string) (string, bool) {
+	if name == segmentName {
+		return c.segFile.sum, c.segFile.present
+	}
+	b, ok := c.files[name]
+	if !ok {
+		return "", false
+	}
+	return ledger.SHA256Bytes(b), true
 }
 
 // alwaysFiles are in every pack whatever its manifest lists.
@@ -858,7 +981,7 @@ const (
 // Context and disclosures depend on the manifest's counts and are checked on their own.
 func (c *packCheck) checkRequired() {
 	for _, n := range alwaysFiles {
-		if _, ok := c.files[n]; !ok {
+		if !c.has(n) {
 			c.errf("%s: required by the pack format but missing", n)
 		}
 	}
@@ -888,23 +1011,108 @@ func (c *packCheck) checkGenesis() {
 }
 
 // checkSegment verifies the segment's chain and anchors and that its ends
-// match the manifest.
-func (c *packCheck) checkSegment() {
-	seg, lines, err := ledger.Read(bytes.NewReader(c.files["ledger/segment.jsonl"]))
-	if err != nil {
-		// what was read before the bad line still goes through the checks
-		c.errf("ledger/segment.jsonl: %v", err)
-	}
-	c.seg = seg
-	c.r.Ledger = ledger.Verify(seg, lines, ledger.VerifyOptions{
+// match the manifest. It streams the segment out of the zip once, which
+// also gives the summaries the report needs.
+func (c *packCheck) checkSegment() error {
+	c.loadContext()
+	all, segOnly := c.summarizers()
+	opt := ledger.VerifyOptions{
 		LoadToken:   c.anchorToken,
 		CheckAnchor: ops.AnchorVerifier(c.o.Roots, c.o.AllowUnpinned),
-	})
-	if len(seg) == 0 || seg[0] == nil {
-		return
+		OnEntry: func(e ledger.Entry, line []byte, off int64) {
+			c.seg.see(e, line, off)
+			all.Add(e)
+			if segOnly != all {
+				segOnly.Add(e)
+			}
+		},
 	}
-	c.checkSegmentStart(seg[0], lines[0])
-	c.checkSegmentEnd(seg[len(seg)-1])
+	rep, err := c.verifySegment(opt, -1)
+	if err != nil {
+		return err
+	}
+	c.r.Ledger = rep
+	c.summary = all.Summary()
+	c.totals = c.summary.Totals
+	if segOnly != all {
+		c.totals = segOnly.Summary().Totals
+	}
+	if c.seg.n == 0 || c.seg.first == nil {
+		return nil
+	}
+	c.checkSegmentStart(c.seg.first, c.seg.firstLine)
+	c.checkSegmentEnd(c.seg.last)
+	return nil
+}
+
+// verifySegment runs the ledger check over the segment, or over its first
+// limit bytes when limit is not negative. A line too long to read ends the
+// segment there: what came before it is checked and the error is in the report.
+func (c *packCheck) verifySegment(opt ledger.VerifyOptions, limit int64) (*ledger.Report, error) {
+	var src io.Reader = strings.NewReader("")
+	if c.segFile.present {
+		rc, err := openEntry(c.path, segmentName)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = rc.Close() }()
+		src = rc
+	}
+	if limit >= 0 {
+		src = io.LimitReader(src, limit)
+	}
+	trap := &errTrap{r: src}
+	rep, err := ledger.VerifyReader(trap, opt)
+	if err == nil {
+		return rep, nil
+	}
+	if trap.err != nil || limit >= 0 {
+		return nil, err
+	}
+	c.errf("%s: %v", segmentName, err)
+	opt.OnEntry = nil
+	return c.verifySegment(opt, c.seg.end)
+}
+
+// errTrap remembers the first error its reader gave other than the end of input.
+type errTrap struct {
+	r   io.Reader
+	err error
+}
+
+func (t *errTrap) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err != nil && err != io.EOF && t.err == nil {
+		t.err = err
+	}
+	return n, err
+}
+
+// summarizers returns what totals and the report are computed from. The
+// context entries come first in all. The totals only count calls and the
+// amendments that retag them, so when the context holds none of those the
+// segment alone gives the same totals, and one summarizer does for both.
+func (c *packCheck) summarizers() (all, segOnly *report.Summarizer) {
+	all = report.NewSummarizer(c.filter)
+	segOnly = all
+	for _, e := range c.ctxEntries {
+		if e.Type() == ledger.TypeCall || e.Type() == ledger.TypeAmendment {
+			segOnly = report.NewSummarizer(c.filter)
+		}
+		all.Add(e)
+	}
+	return all, segOnly
+}
+
+// loadContext reads the context file, which is small. A file that does not
+// parse is reported by checkContext, and counts as no entries.
+func (c *packCheck) loadContext() {
+	cb, present := c.files[contextFile]
+	ce, _, err := ledger.Read(bytes.NewReader(cb))
+	c.ctxPresent, c.ctxErr = present, err
+	if err == nil {
+		c.ctxEntries = ce
+	}
 }
 
 func (c *packCheck) checkSegmentStart(first ledger.Entry, line []byte) {
@@ -961,11 +1169,11 @@ func (c *packCheck) checkEndClaim(ms Segment) {
 		c.errf("manifest claims the segment end is anchored, but no valid anchor found")
 		return
 	}
-	if len(c.seg) == 0 {
+	if c.seg.n == 0 {
 		return
 	}
 	// a missing, unparsed or moved last entry is already an error from checkSegmentEnd
-	if last := c.seg[len(c.seg)-1]; last != nil && last.Seq() == ms.LastSeq && last.Type() != ledger.TypeAnchor {
+	if last := c.seg.last; last != nil && last.Seq() == ms.LastSeq && last.Type() != ledger.TypeAnchor {
 		c.errf("manifest claims the segment end is anchored, but the last entry (seq %d) is not an anchor", ms.LastSeq)
 	}
 }
@@ -982,20 +1190,18 @@ func (c *packCheck) anchorCovers(seq int64) bool {
 
 // checkContext checks the context entries are self-consistent and precede the segment.
 func (c *packCheck) checkContext() {
-	cb, present := c.files[contextFile]
-	ce, _, err := ledger.Read(bytes.NewReader(cb))
-	if err != nil {
-		c.errf("%s: %v", contextFile, err)
+	if c.ctxErr != nil {
+		c.errf("%s: %v", contextFile, c.ctxErr)
 		return
 	}
-	c.ctxEntries = ce
+	ce := c.ctxEntries
 	for _, e := range ce {
 		c.checkContextEntry(e)
 	}
 	if len(ce) != c.m.ContextEntries {
 		c.errf("manifest lists %d context entries but %s has %d", c.m.ContextEntries, contextFile, len(ce))
 	}
-	if !present {
+	if !c.ctxPresent {
 		return
 	}
 	c.r.Notes = append(c.r.Notes, fmt.Sprintf("%d context entries (key history / code links before the segment) are self-consistent; their chain membership is not covered by this segment", len(ce)))
@@ -1053,16 +1259,20 @@ func diffKeys[A, B any](a map[string]A, b map[string]B) []string {
 	return out
 }
 
-// checkTotals recomputes the usage totals from the segment and compares them
-// with the manifest's.
+// periodFilter is the filter the manifest's period and provider describe, and
+// false when the period is not two dates. A bad date counts as the zero time.
+func periodFilter(m *Manifest) (report.Filter, bool) {
+	from, errFrom := time.Parse("2006-01-02", m.Period.From)
+	to, errTo := time.Parse("2006-01-02", m.Period.To)
+	return report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: m.ProviderFilter}, errFrom == nil && errTo == nil
+}
+
+// checkTotals compares the usage totals recomputed from the segment with the
+// manifest's.
 func (c *packCheck) checkTotals() {
-	from, errFrom := time.Parse("2006-01-02", c.m.Period.From)
-	to, errTo := time.Parse("2006-01-02", c.m.Period.To)
-	if errFrom != nil || errTo != nil {
+	if !c.periodOK {
 		c.errf("manifest period %q to %q is not two YYYY-MM-DD dates", c.m.Period.From, c.m.Period.To)
 	}
-	c.filter = report.Filter{From: from, To: to.AddDate(0, 0, 1), Provider: c.m.ProviderFilter}
-	c.totals = report.Summarize(c.seg, c.filter).Totals
 	got, err := canon.FromStruct(c.totals)
 	if err != nil {
 		c.errf("recomputed totals: %v", err)
@@ -1109,7 +1319,7 @@ func (c *packCheck) addNotes() {
 func (c *packCheck) renderReport() {
 	rm := *c.m
 	rm.Totals = c.totals
-	ctxSummary := report.Summarize(append(append([]ledger.Entry{}, c.ctxEntries...), c.seg...), c.filter)
+	ctxSummary := c.summary
 	note := c.compareSummary(&rm, ctxSummary)
 	r := c.r
 	banner := &VerifierBanner{OK: r.OK(), Verifier: c.o.Generator, At: ledger.FormatTime(c.o.Clock().UTC()),

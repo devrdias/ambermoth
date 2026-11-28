@@ -1,0 +1,4 @@
+exit 1
+--- stdout
+--- stderr
+error: zip entry "../evil": unsafe name (want a relative path with no ".." or empty parts and no backslash)

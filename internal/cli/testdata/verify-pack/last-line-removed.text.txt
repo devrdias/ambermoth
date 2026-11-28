@@ -1,0 +1,19 @@
+exit 1
+--- stdout
+Evidence pack verification: FAILED
+  format ambermoth-pack/1 · ledger 68b9e4ef-0c67-47a0-ba76-4fae6036231b · account (account not specified)
+  period 2026-03-04 → 2026-03-06 · 4 calls
+  files: 10 checked · totals recomputed from the ledger segment
+Ledger verification: OK
+  entries:   9 (seq 5…13), segment
+  head:      sha256:124fe32816907769ffe19cef06a6d85c68183b529f5a5f063a9a870062ce166a
+  anchors:   2, anchored through seq 5, 6 entries after the last anchor
+    ✓ seq 5      2026-11-27T19:25:29.000Z  http://127.0.0.1:46383  Test TSA (pinned)
+    ✓ seq 5      2026-11-27T19:25:29.000Z  http://127.0.0.1:41225  Test TSA (pinned)
+  anchor lag: largest 6487h25m29s (seq 5); 1 entries anchored more than 24h after their own timestamp
+  warning: 1 entries were first anchored more than 24h after their own timestamps (largest gap 6487h25m0s, seq 5): they are only proven to exist from their anchor time on
+  ERROR: ledger/segment.jsonl: SHA-256 does not match manifest (file altered)
+  ERROR: segment end does not match manifest
+  ERROR: summary.html does not match a re-render from the verified ledger: it was edited after the pack was built. Read the verifier's report instead.
+  note: 2 context entries (key history / code links before the segment) are self-consistent; their chain membership is not covered by this segment
+--- stderr

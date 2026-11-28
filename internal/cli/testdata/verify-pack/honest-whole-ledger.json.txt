@@ -1,0 +1,571 @@
+exit 0
+--- stdout
+{
+  "errors": null,
+  "ledger": {
+    "entries": 33,
+    "first_seq": 0,
+    "last_seq": 32,
+    "head_hash": "sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce",
+    "starts_at_genesis": true,
+    "errors": [],
+    "warnings": [
+      "22 entries were first anchored more than 24h after their own timestamps (largest gap 6523h25m0s, seq 0): they are only proven to exist from their anchor time on"
+    ],
+    "anchors": [
+      {
+        "seq": 6,
+        "target_seq": 5,
+        "tsa": "http://127.0.0.1:46383",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 7,
+        "target_seq": 5,
+        "tsa": "http://127.0.0.1:41225",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 14,
+        "target_seq": 13,
+        "tsa": "http://127.0.0.1:46383",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 21,
+        "target_seq": 20,
+        "tsa": "http://127.0.0.1:46383",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 22,
+        "target_seq": 20,
+        "tsa": "http://127.0.0.1:41225",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      },
+      {
+        "seq": 27,
+        "target_seq": 26,
+        "tsa": "http://127.0.0.1:46383",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      }
+    ],
+    "last_anchored_seq": 26,
+    "unanchored_tail": 5,
+    "max_anchor_lag_seconds": 23484329,
+    "max_anchor_lag_seq": 0,
+    "entries_lagging_over_24h": 22,
+    "dropped_calls": 4,
+    "anchor_checks_skipped": false
+  },
+  "manifest": {
+    "format": "ambermoth-pack/1",
+    "generator": "ambermoth/test",
+    "created": "2026-04-10T00:00:00.000Z",
+    "ledger_id": "68b9e4ef-0c67-47a0-ba76-4fae6036231b",
+    "account": "(account not specified)",
+    "period": {
+      "from": "2026-03-01",
+      "to": "2026-04-30"
+    },
+    "provider_filter": "",
+    "segment": {
+      "first_seq": 0,
+      "last_seq": 32,
+      "first_prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "last_hash": "sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce",
+      "start_anchored": false,
+      "end_anchored": false
+    },
+    "context_entries": 0,
+    "disclosed": [],
+    "totals": {
+      "all": {
+        "calls": 16,
+        "tokens_in": 1600,
+        "tokens_out": 320,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 3,
+        "by_endpoint": {
+          "messages": 16
+        },
+        "by_model": {
+          "m-anthropic": 10,
+          "m-openai": 6
+        },
+        "by_day": {
+          "2026-03-02": 2,
+          "2026-03-04": 2,
+          "2026-03-05": 1,
+          "2026-03-06": 1,
+          "2026-03-08": 2,
+          "2026-03-09": 2,
+          "2026-03-12": 1,
+          "2026-03-13": 1,
+          "2026-03-16": 1,
+          "2026-03-17": 1,
+          "2026-03-18": 2
+        },
+        "by_key": {
+          "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 16
+        },
+        "first": "2026-03-02T12:00:00.000Z",
+        "last": "2026-03-18T12:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 2,
+            "ts": "2026-03-02T12:00:00.000Z",
+            "model": "m-anthropic",
+            "prompt_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf",
+            "output_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf"
+          },
+          {
+            "seq": 3,
+            "ts": "2026-03-02T12:00:00.000Z",
+            "model": "m-openai",
+            "prompt_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8",
+            "output_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8"
+          },
+          {
+            "seq": 8,
+            "ts": "2026-03-04T12:00:00.000Z",
+            "model": "m-anthropic",
+            "prompt_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd",
+            "output_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd"
+          }
+        ]
+      },
+      "by_purpose": {
+        "alpha": {
+          "calls": 4,
+          "tokens_in": 400,
+          "tokens_out": 80,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 4
+          },
+          "by_model": {
+            "m-anthropic": 4
+          },
+          "by_day": {
+            "2026-03-04": 1,
+            "2026-03-09": 1,
+            "2026-03-16": 1,
+            "2026-03-18": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 4
+          },
+          "first": "2026-03-04T12:00:00.000Z",
+          "last": "2026-03-18T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 8,
+              "ts": "2026-03-04T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd",
+              "output_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd"
+            },
+            {
+              "seq": 19,
+              "ts": "2026-03-09T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:32c7c9c4588930f25a9c855d6c124b0676e3af50d44ebfdcfac60bb07f87ea8d",
+              "output_hmac": "hmac-sha256:32c7c9c4588930f25a9c855d6c124b0676e3af50d44ebfdcfac60bb07f87ea8d"
+            },
+            {
+              "seq": 28,
+              "ts": "2026-03-16T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593",
+              "output_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593"
+            }
+          ]
+        },
+        "alpha-v2": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 1,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-anthropic": 1
+          },
+          "by_day": {
+            "2026-03-08": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-08T12:00:00.000Z",
+          "last": "2026-03-08T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 15,
+              "ts": "2026-03-08T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:3976fd16b2b3c785de63e7db4201b5d877c918bd9d2f0da07c9ccf75c05f9ef2",
+              "output_hmac": "hmac-sha256:3976fd16b2b3c785de63e7db4201b5d877c918bd9d2f0da07c9ccf75c05f9ef2"
+            }
+          ]
+        },
+        "beta": {
+          "calls": 6,
+          "tokens_in": 600,
+          "tokens_out": 120,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 6
+          },
+          "by_model": {
+            "m-openai": 6
+          },
+          "by_day": {
+            "2026-03-02": 1,
+            "2026-03-04": 1,
+            "2026-03-06": 1,
+            "2026-03-08": 1,
+            "2026-03-13": 1,
+            "2026-03-17": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 6
+          },
+          "first": "2026-03-02T12:00:00.000Z",
+          "last": "2026-03-17T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 3,
+              "ts": "2026-03-02T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8",
+              "output_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8"
+            },
+            {
+              "seq": 9,
+              "ts": "2026-03-04T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:08581ee5cfe196f4e5d3cce4168f2daf6d70ebe25a6b1877874f9d3bc5339917",
+              "output_hmac": "hmac-sha256:08581ee5cfe196f4e5d3cce4168f2daf6d70ebe25a6b1877874f9d3bc5339917"
+            },
+            {
+              "seq": 13,
+              "ts": "2026-03-06T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:0f7cfb140090197a9dc2567ecc4c50fc7a728627aa0e3fcae6cdaa4fbbc8b563",
+              "output_hmac": "hmac-sha256:0f7cfb140090197a9dc2567ecc4c50fc7a728627aa0e3fcae6cdaa4fbbc8b563"
+            }
+          ]
+        },
+        "gamma": {
+          "calls": 3,
+          "tokens_in": 300,
+          "tokens_out": 60,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 3
+          },
+          "by_model": {
+            "m-anthropic": 3
+          },
+          "by_day": {
+            "2026-03-05": 1,
+            "2026-03-12": 1,
+            "2026-03-18": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 3
+          },
+          "first": "2026-03-05T12:00:00.000Z",
+          "last": "2026-03-18T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 11,
+              "ts": "2026-03-05T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:2e6533fc1b232432d5051607616ad12ddbc2ef0197afee4c8c0edd6919855083",
+              "output_hmac": "hmac-sha256:2e6533fc1b232432d5051607616ad12ddbc2ef0197afee4c8c0edd6919855083"
+            },
+            {
+              "seq": 23,
+              "ts": "2026-03-12T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:770e74d3665a49f846937fc7883c2b256e749ad223019b8e361eb8de155228c7",
+              "output_hmac": "hmac-sha256:770e74d3665a49f846937fc7883c2b256e749ad223019b8e361eb8de155228c7"
+            },
+            {
+              "seq": 32,
+              "ts": "2026-03-18T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:cef8cf8bb3c1a019f7c84605822a9971f059785c6be8a5dc46ee34f945897985",
+              "output_hmac": "hmac-sha256:cef8cf8bb3c1a019f7c84605822a9971f059785c6be8a5dc46ee34f945897985"
+            }
+          ]
+        },
+        "gamma-v2": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 1,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-anthropic": 1
+          },
+          "by_day": {
+            "2026-03-09": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-09T12:00:00.000Z",
+          "last": "2026-03-09T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 17,
+              "ts": "2026-03-09T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:30458021d345d719a5e3779f49efbcc67f20ba970fda2958a1e8694df749540b",
+              "output_hmac": "hmac-sha256:30458021d345d719a5e3779f49efbcc67f20ba970fda2958a1e8694df749540b"
+            }
+          ]
+        },
+        "late": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 1,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-anthropic": 1
+          },
+          "by_day": {
+            "2026-03-02": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-02T12:00:00.000Z",
+          "last": "2026-03-02T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 2,
+              "ts": "2026-03-02T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf",
+              "output_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf"
+            }
+          ]
+        }
+      },
+      "by_provider": {
+        "anthropic": {
+          "calls": 10,
+          "tokens_in": 1000,
+          "tokens_out": 200,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 3,
+          "by_endpoint": {
+            "messages": 10
+          },
+          "by_model": {
+            "m-anthropic": 10
+          },
+          "by_day": {
+            "2026-03-02": 1,
+            "2026-03-04": 1,
+            "2026-03-05": 1,
+            "2026-03-08": 1,
+            "2026-03-09": 2,
+            "2026-03-12": 1,
+            "2026-03-16": 1,
+            "2026-03-18": 2
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 10
+          },
+          "first": "2026-03-02T12:00:00.000Z",
+          "last": "2026-03-18T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 2,
+              "ts": "2026-03-02T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf",
+              "output_hmac": "hmac-sha256:03a1756b954cf573218736abd42f217782c463a050964719880f63c928a3f5bf"
+            },
+            {
+              "seq": 8,
+              "ts": "2026-03-04T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd",
+              "output_hmac": "hmac-sha256:9d82819595296d93ec58576e2b11dd23f0671fa6d62b9f9a4f123ba4696f6acd"
+            },
+            {
+              "seq": 11,
+              "ts": "2026-03-05T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:2e6533fc1b232432d5051607616ad12ddbc2ef0197afee4c8c0edd6919855083",
+              "output_hmac": "hmac-sha256:2e6533fc1b232432d5051607616ad12ddbc2ef0197afee4c8c0edd6919855083"
+            }
+          ]
+        },
+        "openai": {
+          "calls": 6,
+          "tokens_in": 600,
+          "tokens_out": 120,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 6
+          },
+          "by_model": {
+            "m-openai": 6
+          },
+          "by_day": {
+            "2026-03-02": 1,
+            "2026-03-04": 1,
+            "2026-03-06": 1,
+            "2026-03-08": 1,
+            "2026-03-13": 1,
+            "2026-03-17": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 6
+          },
+          "first": "2026-03-02T12:00:00.000Z",
+          "last": "2026-03-17T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 3,
+              "ts": "2026-03-02T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8",
+              "output_hmac": "hmac-sha256:8a10b3db2a55171071b1165deca4deb544eeead6383bc18e84adbb4c05677ef8"
+            },
+            {
+              "seq": 9,
+              "ts": "2026-03-04T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:08581ee5cfe196f4e5d3cce4168f2daf6d70ebe25a6b1877874f9d3bc5339917",
+              "output_hmac": "hmac-sha256:08581ee5cfe196f4e5d3cce4168f2daf6d70ebe25a6b1877874f9d3bc5339917"
+            },
+            {
+              "seq": 13,
+              "ts": "2026-03-06T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:0f7cfb140090197a9dc2567ecc4c50fc7a728627aa0e3fcae6cdaa4fbbc8b563",
+              "output_hmac": "hmac-sha256:0f7cfb140090197a9dc2567ecc4c50fc7a728627aa0e3fcae6cdaa4fbbc8b563"
+            }
+          ]
+        }
+      }
+    },
+    "files": [
+      {
+        "path": "LIMITS.md",
+        "sha256": "sha256:3e90a1eca69e55328790109c138ad72f2f7e9f711b08995212a363569b5e7e03",
+        "bytes": 1498
+      },
+      {
+        "path": "VERIFY.md",
+        "sha256": "sha256:2a4be2555b6242d676a74778d6af9fcfa61c3d5addbf17483785a3f4d027c048",
+        "bytes": 1594
+      },
+      {
+        "path": "anchors/13-0-127.0.0.1_46383.tsr",
+        "sha256": "sha256:e634e6c927594551e4283ed3255932ce06613aabb0cb7f2b313daf16c0f5eb14",
+        "bytes": 1308
+      },
+      {
+        "path": "anchors/20-0-127.0.0.1_46383.tsr",
+        "sha256": "sha256:536f1de3a368b7f6485cc70cf1653ae92baad045a3f8c4761af1eb2a31bacfc9",
+        "bytes": 1308
+      },
+      {
+        "path": "anchors/20-1-127.0.0.1_41225.tsr",
+        "sha256": "sha256:7e7bb1ddd31716b735c7b406863b1c56dea09adfa2854c9119aad1496fe39b94",
+        "bytes": 1308
+      },
+      {
+        "path": "anchors/26-0-127.0.0.1_46383.tsr",
+        "sha256": "sha256:25507b16000a73105af3cb9f3b6f81c8c22b8adc19d671ba002c571a3e02f500",
+        "bytes": 1308
+      },
+      {
+        "path": "anchors/5-0-127.0.0.1_46383.tsr",
+        "sha256": "sha256:552ff0f7dc7bd04c673df547883f2a2e3439bc88cb7da017d6da97f16fb1a292",
+        "bytes": 1308
+      },
+      {
+        "path": "anchors/5-1-127.0.0.1_41225.tsr",
+        "sha256": "sha256:3ac32062c4fa61659171ac766c4e2008bf43de0b185533e03809952164e6ab11",
+        "bytes": 1308
+      },
+      {
+        "path": "ledger/genesis.json",
+        "sha256": "sha256:b82c41722a48a41a4ef47014563e143437d9784f9c822d87d731a778e03773f5",
+        "bytes": 404
+      },
+      {
+        "path": "ledger/segment.jsonl",
+        "sha256": "sha256:09cee8c653d637a52feeba0baebb65fcb70e198b16a1d4edc7fe32580c0f13d1",
+        "bytes": 18649
+      },
+      {
+        "path": "letter-template.md",
+        "sha256": "sha256:80b9b4cef310eb0e1b75f4519ff1bf7a86163fc140cd9ac3ffe769523b7df383",
+        "bytes": 1239
+      },
+      {
+        "path": "summary.html",
+        "sha256": "sha256:dbefb88480ce1ad7b21c7a28b1b85a0a1e25ef22da22855740cdf09ab38375bc",
+        "bytes": 16212
+      }
+    ]
+  },
+  "notes": null,
+  "ok": true,
+  "warnings": [
+    "the last 5 entries of the segment are not anchored (self-attested)"
+  ]
+}
+--- stderr

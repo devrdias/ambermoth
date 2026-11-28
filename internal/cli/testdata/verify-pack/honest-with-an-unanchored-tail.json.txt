@@ -1,0 +1,276 @@
+exit 0
+--- stdout
+{
+  "errors": null,
+  "ledger": {
+    "entries": 7,
+    "first_seq": 26,
+    "last_seq": 32,
+    "head_hash": "sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce",
+    "starts_at_genesis": false,
+    "errors": [],
+    "warnings": [
+      "1 entries were first anchored more than 24h after their own timestamps (largest gap 6199h25m0s, seq 26): they are only proven to exist from their anchor time on"
+    ],
+    "anchors": [
+      {
+        "seq": 27,
+        "target_seq": 26,
+        "tsa": "http://127.0.0.1:46383",
+        "gen_time": "2026-11-27T19:25:29Z",
+        "signer": "Test TSA",
+        "pinned": true,
+        "ok": true
+      }
+    ],
+    "last_anchored_seq": 26,
+    "unanchored_tail": 5,
+    "max_anchor_lag_seconds": 22317929,
+    "max_anchor_lag_seq": 26,
+    "entries_lagging_over_24h": 1,
+    "dropped_calls": 2,
+    "anchor_checks_skipped": false
+  },
+  "manifest": {
+    "format": "ambermoth-pack/1",
+    "generator": "ambermoth/test",
+    "created": "2026-04-10T00:00:00.000Z",
+    "ledger_id": "68b9e4ef-0c67-47a0-ba76-4fae6036231b",
+    "account": "(account not specified)",
+    "period": {
+      "from": "2026-03-16",
+      "to": "2026-03-17"
+    },
+    "provider_filter": "",
+    "segment": {
+      "first_seq": 26,
+      "last_seq": 32,
+      "first_prev_hash": "sha256:3ce6e9a8014035b0ffb5e3a1d788b5314cd448dd18a2977b57dc66cadfefd2a1",
+      "last_hash": "sha256:5de3e4b2e91a012f8f13b02b678e277496e62e6cf0e57052f031f54c95adc0ce",
+      "start_anchored": true,
+      "end_anchored": false
+    },
+    "context_entries": 5,
+    "disclosed": [],
+    "totals": {
+      "all": {
+        "calls": 2,
+        "tokens_in": 200,
+        "tokens_out": 40,
+        "cached_in": 0,
+        "errors": 0,
+        "retagged": 0,
+        "by_endpoint": {
+          "messages": 2
+        },
+        "by_model": {
+          "m-anthropic": 1,
+          "m-openai": 1
+        },
+        "by_day": {
+          "2026-03-16": 1,
+          "2026-03-17": 1
+        },
+        "by_key": {
+          "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 2
+        },
+        "first": "2026-03-16T12:00:00.000Z",
+        "last": "2026-03-17T12:00:00.000Z",
+        "exemplars": [
+          {
+            "seq": 28,
+            "ts": "2026-03-16T12:00:00.000Z",
+            "model": "m-anthropic",
+            "prompt_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593",
+            "output_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593"
+          },
+          {
+            "seq": 30,
+            "ts": "2026-03-17T12:00:00.000Z",
+            "model": "m-openai",
+            "prompt_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406",
+            "output_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406"
+          }
+        ]
+      },
+      "by_purpose": {
+        "alpha": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-anthropic": 1
+          },
+          "by_day": {
+            "2026-03-16": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-16T12:00:00.000Z",
+          "last": "2026-03-16T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 28,
+              "ts": "2026-03-16T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593",
+              "output_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593"
+            }
+          ]
+        },
+        "beta": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-openai": 1
+          },
+          "by_day": {
+            "2026-03-17": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-17T12:00:00.000Z",
+          "last": "2026-03-17T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 30,
+              "ts": "2026-03-17T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406",
+              "output_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406"
+            }
+          ]
+        }
+      },
+      "by_provider": {
+        "anthropic": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-anthropic": 1
+          },
+          "by_day": {
+            "2026-03-16": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-16T12:00:00.000Z",
+          "last": "2026-03-16T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 28,
+              "ts": "2026-03-16T12:00:00.000Z",
+              "model": "m-anthropic",
+              "prompt_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593",
+              "output_hmac": "hmac-sha256:ca5df2122f8b0febd043e803c33e77c8dcf07da00c06398de6ba3ccb9dd11593"
+            }
+          ]
+        },
+        "openai": {
+          "calls": 1,
+          "tokens_in": 100,
+          "tokens_out": 20,
+          "cached_in": 0,
+          "errors": 0,
+          "retagged": 0,
+          "by_endpoint": {
+            "messages": 1
+          },
+          "by_model": {
+            "m-openai": 1
+          },
+          "by_day": {
+            "2026-03-17": 1
+          },
+          "by_key": {
+            "sha256:0f2c10bf3d128c719c6bfa4ecbae94b7fceebaea6e4438fef38a90e5acc326f3": 1
+          },
+          "first": "2026-03-17T12:00:00.000Z",
+          "last": "2026-03-17T12:00:00.000Z",
+          "exemplars": [
+            {
+              "seq": 30,
+              "ts": "2026-03-17T12:00:00.000Z",
+              "model": "m-openai",
+              "prompt_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406",
+              "output_hmac": "hmac-sha256:8910b32bc91c1777fb183f418f8d0cf63989f458a63de1f5c45a657e9a600406"
+            }
+          ]
+        }
+      }
+    },
+    "files": [
+      {
+        "path": "LIMITS.md",
+        "sha256": "sha256:3e90a1eca69e55328790109c138ad72f2f7e9f711b08995212a363569b5e7e03",
+        "bytes": 1498
+      },
+      {
+        "path": "VERIFY.md",
+        "sha256": "sha256:2a4be2555b6242d676a74778d6af9fcfa61c3d5addbf17483785a3f4d027c048",
+        "bytes": 1594
+      },
+      {
+        "path": "anchors/26-0-127.0.0.1_46383.tsr",
+        "sha256": "sha256:25507b16000a73105af3cb9f3b6f81c8c22b8adc19d671ba002c571a3e02f500",
+        "bytes": 1308
+      },
+      {
+        "path": "ledger/context.jsonl",
+        "sha256": "sha256:d9a4b71e77aef39ff7affd40295e3f51f11fe652e60aa3136d9b2b1c75c042e2",
+        "bytes": 1863
+      },
+      {
+        "path": "ledger/genesis.json",
+        "sha256": "sha256:b82c41722a48a41a4ef47014563e143437d9784f9c822d87d731a778e03773f5",
+        "bytes": 404
+      },
+      {
+        "path": "ledger/segment.jsonl",
+        "sha256": "sha256:189b3ae457fa737b5d60f08d16bbbb8b7943dbe04c99293327752d4c1f1ec2da",
+        "bytes": 4014
+      },
+      {
+        "path": "letter-template.md",
+        "sha256": "sha256:975a566168e13ed46b4f2fc9e1d1ce0661e090749810da7b27475ce3fbb3ce72",
+        "bytes": 1324
+      },
+      {
+        "path": "summary.html",
+        "sha256": "sha256:e60e7fc09332ab9cdc9733f56bcc561711c58690d7e7986b2d4e57aaf1ec6fb8",
+        "bytes": 10661
+      }
+    ]
+  },
+  "notes": [
+    "5 context entries (key history / code links before the segment) are self-consistent; their chain membership is not covered by this segment"
+  ],
+  "ok": true,
+  "warnings": [
+    "the last 5 entries of the segment are not anchored (self-attested)"
+  ]
+}
+--- stderr
